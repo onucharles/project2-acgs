@@ -77,6 +77,9 @@
 #      GRU.  Implementing this method is not considered part of problems 1/2 
 #      respectively, and will be graded as part of Problem 5.3
 
+# import comet for experiment logging
+from comet_ml import Experiment
+experiment = Experiment(api_key="w7QuiECYXbNiOozveTpjc9uPg", project_name="project2", workspace="ift6135-project2")
 
 import argparse
 import time
@@ -89,6 +92,7 @@ from torch.autograd import Variable
 import torch.nn as nn
 import numpy
 np = numpy
+
 
 # NOTE ==============================================
 # This is where your models are imported
@@ -156,13 +160,18 @@ args = parser.parse_args()
 argsdict = args.__dict__
 argsdict['code_file'] = sys.argv[0]
 
+# first create an output dir
+if not os.path.exists(args.save_dir):
+    os.mkdir(args.save_dir)
+    print('Created directory: ', args.save_dir)
+
 # Use the model, optimizer, and the flags passed to the script to make the 
 # name for the experimental dir
 print("\n########## Setting Up Experiment ######################")
 flags = [flag.lstrip('--') for flag in sys.argv[1:]]
-experiment_path = os.path.join(args.save_dir+'_'.join([argsdict['model'],
-                                         argsdict['optimizer']] 
-                                         + flags))
+experiment_path = os.path.join(args.save_dir, '_'.join([argsdict['model'],
+                                         argsdict['optimizer']]))
+                                         #+ flags))
 
 # Increment a counter so that previous results with the same args will not
 # be overwritten. Comment out the next four lines if you only want to keep
@@ -401,7 +410,7 @@ def run_epoch(model, data, is_train=False, lr=1.0):
         losses.append(costs)
         iters += model.seq_len
         if args.debug:
-            print(step, loss)
+            print(step, loss.item())
         if is_train:  # Only update parameters if training 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
@@ -439,6 +448,9 @@ if args.debug:
 else:
     num_epochs = args.num_epochs
 
+# log hyperparameters
+experiment.log_parameters(vars(args))
+
 # MAIN LOOP
 for epoch in range(num_epochs):
     t0 = time.time()
@@ -446,20 +458,27 @@ for epoch in range(num_epochs):
     if args.optimizer == 'SGD_LR_SCHEDULE':
         lr_decay = lr_decay_base ** max(epoch - m_flat_lr, 0)
         lr = lr * lr_decay # decay lr if it is time
+    experiment.log_current_epoch(epoch)
+    experiment.log_metric("learning_rate", lr, step=epoch)
 
     # RUN MODEL ON TRAINING DATA
     train_ppl, train_loss = run_epoch(model, train_data, True, lr)
+    # experiment.log_metric("train_loss", np.mean(train_loss), step=epoch)
+    experiment.log_metric("train_perplexity", train_ppl, step=epoch)
 
     # RUN MODEL ON VALIDATION DATA
     val_ppl, val_loss = run_epoch(model, valid_data)
-
+    # experiment.log_metric("val_loss", np.mean(val_loss), step=epoch)
+    experiment.log_metric("val_perplexity", val_ppl, step=epoch)
 
     # SAVE MODEL IF IT'S THE BEST SO FAR
     if val_ppl < best_val_so_far:
         best_val_so_far = val_ppl
         if args.save_best:
             print("Saving model parameters to best_params.pt")
-            torch.save(model.state_dict(), os.path.join(args.save_dir, 'best_params.pt'))
+            best_model_path = os.path.join(args.save_dir, 'best_params.pt')
+            torch.save(model.state_dict(), best_model_path)
+            experiment.log_asset(best_model_path, overwrite=True)
         # NOTE ==============================================
         # You will need to load these parameters into the same model
         # for a couple Problems: so that you can compute the gradient 

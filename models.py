@@ -30,7 +30,7 @@ import matplotlib.pyplot as plt
 
 
 def clones(module, N):
-    "
+    """
     A helper function for producing N identical layers (each with their own parameters).
     
     inputs: 
@@ -39,7 +39,7 @@ def clones(module, N):
 
     returns:
         a ModuleList with the copies of the module (the ModuleList is itself also a module)
-    "
+    """
     return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
 
 # Problem 1
@@ -79,6 +79,7 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
     # and output biases to 0 (in place). The embeddings should not use a bias vector.
     # Initialize all other (i.e. recurrent and linear) weights AND biases uniformly 
     # in the range [-k, k] where k is the square root of 1/hidden_size
+    return 0
 
   def init_hidden(self):
     # TODO ========================
@@ -168,6 +169,7 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
 
   def init_weights_uniform(self):
     # TODO ========================
+    hello = 0
 
   def init_hidden(self):
     # TODO ========================
@@ -257,13 +259,19 @@ class MultiHeadedAttention(nn.Module):
         self.d_k = n_units // n_heads
         # This requires the number of n_heads to evenly divide n_units.
         assert n_units % n_heads == 0
-        self.n_units = n_units 
+        self.n_units = n_units
+        self.n_heads = n_heads
 
         # TODO: create/initialize any necessary parameters or layers
         # Initialize all weights and biases uniformly in the range [-k, k],
         # where k is the square root of 1/n_units.
         # Note: the only Pytorch modules you are allowed to use are nn.Linear 
         # and nn.Dropout
+        self.query_linear = nn.Linear(n_units, n_units)
+        self.key_linear = nn.Linear(n_units, n_units)
+        self.value_linear = nn.Linear(n_units, n_units)
+        self.dropout = nn.Dropout(dropout)
+        self.output = nn.Linear(n_units, n_units)
         
     def forward(self, query, key, value, mask=None):
         # TODO: implement the masked multi-head attention.
@@ -272,12 +280,38 @@ class MultiHeadedAttention(nn.Module):
         # As described in the .tex, apply input masking to the softmax 
         # generating the "attention values" (i.e. A_i in the .tex)
         # Also apply dropout to the attention values.
+        batch_size = query.size(0)
 
-        return # size: (batch_size, seq_len, self.n_units)
+        query = self.query_linear(query).view(batch_size, -1, self.n_heads, self.d_k).transpose(1,2)
+        key = self.key_linear(key).view(batch_size, -1, self.n_heads, self.d_k).transpose(1,2)
+        value = self.value_linear(value).view(batch_size, -1, self.n_heads, self.d_k).transpose(1,2)
 
+        # generate "attention values" (apply dropout if present)
+        A = self.attention(query, key, value, self.d_k, batch_size, mask, self.dropout)
 
+        output = self.output(A)
 
+        return output # size: (batch_size, seq_len, self.n_units)
 
+    def attention(self, q, k, v, d_k, batch_size, mask=None, dropout=None):
+
+        a_i_term = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_k)
+
+        if mask is not None:
+            mask = mask.unsqueeze(1)
+            #scores = torch.mul(scores, mask) - 10e9 * (1 - mask)
+            a_i_term = a_i_term.masked_fill(mask == 0, -10e9)
+        attention_values = F.softmax(a_i_term, dim=-1)
+
+        if dropout is not None:
+            attention_values = dropout(attention_values)
+
+        h_i = torch.matmul(attention_values, v)
+
+        # concatenate attention heads
+        A = h_i.transpose(1,2).contiguous().view(batch_size, -1, self.n_units)
+
+        return A
 
 
 #----------------------------------------------------------------------------------

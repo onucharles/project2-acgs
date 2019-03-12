@@ -152,3 +152,6 @@ fabric.properties
 
 # data folders
 output/
+
+# specific files
+myscript
