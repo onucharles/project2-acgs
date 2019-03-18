@@ -106,6 +106,21 @@ from models import make_model as TRANSFORMER
 #
 ##############################################################################
 
+# python ptb-lm.py \
+# --save_dir=output \
+# --model=TRANSFORMER \
+# --optimizer=SGD \
+# --initial_lr=20 \
+# --batch_size=128 \
+# --seq_len=35 \
+# --hidden_size=512 \
+# --num_layers=6 \
+# --dp_keep_prob=.9 \
+# --save_best \
+# --emb_size=200 \
+# --num_epochs=40 \
+# --debug
+
 parser = argparse.ArgumentParser(description='PyTorch Penn Treebank Language Modeling')
 
 # Arguments you may need to set to run different experiments in 4.1 & 4.2.
@@ -150,6 +165,8 @@ parser.add_argument('--evaluate', action='store_true',
                     ONCE for each model setting, and only after you've \
                     completed ALL hyperparameter tuning on the validation set.\
                     Note we are not requiring you to do this.")
+parser.add_argument('--gpu_no', type=int, default=0)
+parser.add_argument('--comet_tag', type=str, default='')
 
 # DO NOT CHANGE THIS (setting the random seed makes experiments deterministic, 
 # which helps for reproducibility)
@@ -169,17 +186,19 @@ if not os.path.exists(args.save_dir):
 # name for the experimental dir
 print("\n########## Setting Up Experiment ######################")
 flags = [flag.lstrip('--') for flag in sys.argv[1:]]
-experiment_path = os.path.join(args.save_dir, '_'.join([argsdict['model'],
-                                         argsdict['optimizer']]))
-                                         #+ flags))
+# experiment_path = os.path.join(args.save_dir, '_'.join([argsdict['model'],
+#                                          argsdict['optimizer']]))
+#                                          #+ flags))
+experiment_path = os.path.join(args.save_dir, experiment.id)
+experiment.add_tag(args.comet_tag)
 
 # Increment a counter so that previous results with the same args will not
 # be overwritten. Comment out the next four lines if you only want to keep
 # the most recent results.
-i = 0
-while os.path.exists(experiment_path + "_" + str(i)):
-    i += 1
-experiment_path = experiment_path + "_" + str(i)
+# i = 0
+# while os.path.exists(experiment_path + "_" + str(i)):
+#     i += 1
+# experiment_path = experiment_path + "_" + str(i)
 
 # Creates an experimental directory and dumps all the args to a text file
 os.mkdir(experiment_path)
@@ -194,8 +213,9 @@ torch.manual_seed(args.seed)
 
 # Use the GPU if you have one
 if torch.cuda.is_available():
-    print("Using the GPU")
-    device = torch.device("cuda") 
+    print("Using GPU: " + str(args.gpu_no))
+    device = torch.device("cuda")
+    torch.cuda.set_device(args.gpu_no)
 else:
     print("WARNING: You are about to run on cpu, and this will likely run out \
       of memory. \n You can try setting batch_size=1 to reduce memory usage")
@@ -509,7 +529,8 @@ print('\nDONE\n\nSaving learning curves to '+lc_path)
 np.save(lc_path, {'train_ppls':train_ppls, 
                   'val_ppls':val_ppls, 
                   'train_losses':train_losses,
-                  'val_losses':val_losses})
+                  'val_losses':val_losses,
+                  'times': times})
 # NOTE ==============================================
 # To load these, run 
 # >>> x = np.load(lc_path)[()]
