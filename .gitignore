@@ -153,5 +153,8 @@ fabric.properties
 # data folders
 output/
 
+# experiment folders
+sb/GRU*
+
 # specific files
 myscript
