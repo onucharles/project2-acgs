@@ -292,13 +292,15 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
                         shape: (num_layers, batch_size, hidden_size)
         """
 
+        device = hidden.device
+
         x = torch.zeros([self.seq_len, self.batch_size, self.emb_size])
         logits = torch.zeros([self.seq_len, self.batch_size, self.vocab_size])
         
-        r = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.emb_size])
-        z = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.emb_size])
-        h_tilde = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.emb_size])
-        hidden_seq = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.emb_size])
+        r = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to.device(device)
+        z = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to.device(device)
+        h_tilde = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to.device(device)
+        hidden_seq = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to.device(device)
 
         hidden_seq[0] = hidden
 
