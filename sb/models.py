@@ -199,7 +199,7 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
         self.dropout = nn.Dropout(1-dp_keep_prob)
 
         #Embedding unit
-        self.embedding = nn.Linear(vocab_size, emb_size, False)
+        self.embedding = nn.Embedding(vocab_size, emb_size)
         
         # Activation functions
         self.activation_z = nn.Sigmoid()
@@ -221,6 +221,8 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
         self.lin_Uh = clones(nn.Linear(hidden_size, hidden_size), num_layers)
 
         self.lin_Wy = nn.Linear(hidden_size, vocab_size)
+        self.init_weights_uniform
+
 
     def init_weights_uniform(self):
         # TODO ========================
@@ -228,10 +230,10 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
         # and output biases to 0 (in place). The embeddings should not use a bias vector.
         # Initialize all other (i.e. recurrent and linear) weights AND biases uniformly 
         # in the range [-k, k] where k is the square root of 1/hidden_size
-                    
+
         nn.init.uniform_(self.embedding.weight, -0.1, 0.1)
         nn.init.uniform_(self.lin_Wy.weight, -0.1, 0.1)
-        nn.init.zeros_(self.lin_Wy.bias, dtype=torch.float)
+        nn.init.zeros_(self.lin_Wy.bias)
 
         k = 1/math.sqrt(self.hidden_size)
 
@@ -290,8 +292,15 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
                         shape: (num_layers, batch_size, hidden_size)
         """
 
-        x = torch.zeros([self.seq_len, self.batch_size], dtype=torch.int)
-        logits = torch.zeros([self.seq_len, self.batch_size, self.vocab_size], dtype=torch.float)
+        x = torch.zeros([self.seq_len, self.batch_size, self.emb_size])
+        logits = torch.zeros([self.seq_len, self.batch_size, self.vocab_size])
+        
+        r = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.emb_size])
+        z = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.emb_size])
+        h_tilde = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.emb_size])
+        hidden_seq = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.emb_size])
+
+        hidden_seq[0] = hidden
 
         for t in range(self.seq_len):
             #Embedding
@@ -301,30 +310,30 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
             for layer in range(self.num_layers):
                 #For the first layer, we use the input
                 if layer == 0:
-                    r = self.lin_Wr[layer](x[t]) + self.lin_Ur[layer](hidden[layer])
-                    r = self.activation_r(r)
+                    r[t, layer] = self.lin_Wr[layer](x[t]) + self.lin_Ur[layer](hidden_seq[t, layer])
+                    r[t, layer] = self.activation_r(r[t, layer])
 
-                    z = self.lin_Wz[layer](x[t]) + self.lin_Uz[layer](hidden[layer])
-                    z = self.activation_z(z)
+                    z[t, layer] = self.lin_Wz[layer](x[t]) + self.lin_Uz[layer](hidden_seq[t, layer])
+                    z[t, layer] = self.activation_z(z[t, layer])
 
-                    h_tilde = self.lin_Wh[layer](x[t]) + self.lin_Uh[layer](r*hidden[layer])
-                    h_tilde = self.activation_h(h_tilde)
+                    h_tilde[t, layer] = self.lin_Wh[layer](x[t]) + self.lin_Uh[layer](r[t, layer]*hidden_seq[t, layer])
+                    h_tilde[t, layer] = self.activation_h(h_tilde[t, layer])
 
                 #For the other layers, we use the previous layer instead of the input
                 else:
-                    r = self.lin_Wr[layer](hidden[layer-1]) + self.lin_Ur[layer](hidden[layer])
-                    r = self.activation_r(r)
+                    r[t, layer] = self.lin_Wr[layer](hidden[layer-1]) + self.lin_Ur[layer](hidden_seq[t, layer])
+                    r[t, layer] = self.activation_r(r[t, layer])
 
-                    z = self.lin_Wz[layer](hidden[layer-1]) + self.lin_Uz[layer](hidden[layer])
-                    z = self.activation_z(z)
+                    z[t, layer] = self.lin_Wz[layer](hidden[layer-1]) + self.lin_Uz[layer](hidden_seq[t, layer])
+                    z[t, layer] = self.activation_z(z[t, layer])
 
-                    h_tilde = self.lin_Wh[layer](hidden[layer-1]) + self.lin_Uh[layer](r*hidden[layer])
-                    h_tilde = self.activation_h(h_tilde)
+                    h_tilde[t, layer] = self.lin_Wh[layer](hidden[layer-1]) + self.lin_Uh[layer](r[t, layer]*hidden_seq[t, layer])
+                    h_tilde[t, layer] = self.activation_h(h_tilde[t, layer])
 
-                hidden[layer] = (1-z)*hidden[layer] + z*h_tilde
-                hidden[layer] = self.dropout(hidden[layer])
+                hidden_seq[t, layer] = (1-z[t, layer])*hidden_seq[t, layer] + z[t, layer]*h_tilde[t, layer]
+                hidden_seq[t, layer] = self.dropout(hidden_seq[t, layer])
             
-            logits[t] = self.lin_Wy(hidden[self.num_layers])     
+            logits[t] = self.lin_Wy(hidden[self.num_layers-1])     
 
         return logits.view(self.seq_len, self.batch_size, self.vocab_size), hidden
 
