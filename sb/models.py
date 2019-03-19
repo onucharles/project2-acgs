@@ -291,16 +291,15 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
                 if you are curious.
                         shape: (num_layers, batch_size, hidden_size)
         """
+        device = torch.device("cuda")
 
-        device = hidden.device
-
-        x = torch.zeros([self.seq_len, self.batch_size, self.emb_size])
-        logits = torch.zeros([self.seq_len, self.batch_size, self.vocab_size])
+        x = torch.zeros([self.seq_len, self.batch_size, self.emb_size]).to(device)
+        logits = torch.zeros([self.seq_len, self.batch_size, self.vocab_size]).to(device)
         
-        r = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to.device(device)
-        z = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to.device(device)
-        h_tilde = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to.device(device)
-        hidden_seq = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to.device(device)
+        r = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
+        z = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
+        h_tilde = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
+        hidden_seq = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
 
         hidden_seq[0] = hidden
 
