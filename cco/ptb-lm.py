@@ -79,7 +79,7 @@
 
 # import comet for experiment logging
 from comet_ml import Experiment
-experiment = Experiment(api_key="w7QuiECYXbNiOozveTpjc9uPg", project_name="project2", workspace="ift6135-project2")
+experiment = Experiment(api_key="w7QuiECYXbNiOozveTpjc9uPg", project_name="project2-rnn", workspace="ift6135-project2")
 
 import argparse
 import time
@@ -167,6 +167,7 @@ parser.add_argument('--evaluate', action='store_true',
                     Note we are not requiring you to do this.")
 parser.add_argument('--gpu_no', type=int, default=0)
 parser.add_argument('--comet_tag', type=str, default='')
+parser.add_argument('--saved_model', type=str, default=None)
 
 # DO NOT CHANGE THIS (setting the random seed makes experiments deterministic, 
 # which helps for reproducibility)
@@ -349,6 +350,11 @@ elif args.model == 'TRANSFORMER':
     model.vocab_size=vocab_size
 else:
   print("Model type not recognized.")
+
+# load saved model if any.
+if not args.saved_model is None:
+    print('Loading saved model from {}...'.format(args.saved_model))
+    model.load_state_dict(torch.load(args.saved_model))
 
 model = model.to(device)
 

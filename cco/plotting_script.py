@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+import os
 
 def get_experiment_folder(exp_id):
     return Path('output') / exp_id
@@ -74,10 +75,10 @@ def plot_val_from_folder(source_dir):
         lc = np.load(lc_path)[()]
         exp_id = file.split('.')[0]
 
-        # train_ppls = np.array(lc['train_ppls'])
         val_ppls = np.array(lc['val_ppls'])
         times = np.array(lc['times'])
-        print('train logs length ', len(train_ppls))
+        val_ppls = val_ppls[:n_epochs]
+        times = times[:n_epochs]
         print('valid logs length ', len(val_ppls))
         print('time length ', len(times))
 
@@ -91,54 +92,77 @@ def plot_val_from_folder(source_dir):
 
         # plot perplexity on clock time.
         wall_time = np.cumsum(times)
+        print(times)
+        print(wall_time)
         ax1.plot(wall_time, val_ppls, label=exp_id)
 
-    plt.show()
 
     ax0.set_ylabel('perplexity', fontsize=13)
     ax0.set_yscale('symlog')
     ax0.set_xlabel('epochs', fontsize=13)
     ax0.set_title('(a)', fontsize=13)
-    ax0.set_grid()
-    ax0.set_legend(fontsize=13)
+    ax0.grid()
+    ax0.legend(fontsize=13)
 
     ax1.set_ylabel('perplexity', fontsize=13)
     ax1.set_yscale('symlog')
     ax1.set_xlabel('wall clock time (s)', fontsize=13)
     ax1.set_title('(b)', fontsize=13)
-    ax1.set_grid()
-    ax1.set_legend(fontsize=13)
+    ax1.grid()
+    ax1.legend(fontsize=13)
 
     plt.show()
 
 def main():
+    # exp1 RNN,
+    # plot_learning_curves(get_experiment_folder(''))
+    # exp2 RNN,
+    # plot_learning_curves(get_experiment_folder(''))
+    # exp3 RNN,
+    # plot_learning_curves(get_experiment_folder(''))
+    # exp4 RNN,
+    # plot_learning_curves(get_experiment_folder(''))
+    # exp5 RNN,
+    # plot_learning_curves(get_experiment_folder(''))
+    # exp6 RNN,
+    # plot_learning_curves(get_experiment_folder(''))
+
+    # exp1 GRU,
+    # plot_learning_curves(get_experiment_folder(''))
+    # exp2 GRU,
+    # plot_learning_curves(get_experiment_folder(''))
+    # exp3 GRU,
+    # plot_learning_curves(get_experiment_folder(''))
+    # exp4 GRU,
+    # plot_learning_curves(get_experiment_folder(''))
+    # exp5 GRU,
+    # plot_learning_curves(get_experiment_folder(''))
+    # exp6 GRU,
+    # plot_learning_curves(get_experiment_folder(''))
+
     # exp1 TRANSFORMER, SGD
     # plot_learning_curves(get_experiment_folder('c25de3481cba4e15b568a6b9f3b64256'))
-
     # exp2 TRANSFORMER, SGD_LR_SCHEDULE
     # plot_learning_curves(get_experiment_folder('ff9e25a20ed94bbe9161126d6b7348ee'))
-
     # exp3 TRANSFORMER, ADAM
     # plot_learning_curves(get_experiment_folder('baa5d573c5fb45b882521c68a3886c9f'))
-
     # exp4 TRANSFORMER, ADAM lr=0.0001
     # plot_learning_curves(get_experiment_folder('0ea3a6f51e614a6b9ee1fa913e70e083'))
-
     # exp5 TRANSFORMER, ADAM lr=0.0001, seq_len=45
     # plot_learning_curves(get_experiment_folder('00439eb99bf74f8d9cfb1a88835fd69e'))
-
     # exp6 TRANSFORMER, ADAM lr=0.0001, dropout-keep=0.8
     # plot_learning_curves(get_experiment_folder('699d09435c3043a8bd19ef351b4696a3'))
 
-    plot_val_from_folder('')
-
+    # ---------Optimizers---------
     #adam folder
     #sgd fodler
     #sgd-lr-schedule folder
 
+    #---------Architectures---------
     #rnn folder
     #gru folder
     #transformer folder
+    plot_val_from_folder(get_experiment_folder('transformer'))
 
 if __name__== '__main__':
     main()
