@@ -79,7 +79,7 @@
 
 # import comet for experiment logging
 from comet_ml import Experiment
-experiment = Experiment(api_key="w7QuiECYXbNiOozveTpjc9uPg", project_name="project2-rnn", workspace="ift6135-project2")
+experiment = Experiment(api_key="w7QuiECYXbNiOozveTpjc9uPg", project_name="project2-transformer", workspace="ift6135-project2")
 
 import argparse
 import time
