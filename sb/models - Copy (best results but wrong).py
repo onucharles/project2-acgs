@@ -293,42 +293,48 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
         """
         device = torch.device("cuda")
 
-        #x = torch.zeros([self.seq_len, self.batch_size, self.emb_size]).to(device)
-        logits_list = []#torch.zeros([self.seq_len, self.batch_size, self.vocab_size]).to(device)
-        hidden_seq_list = []
-        #r = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
-        #z = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
-        #h_tilde = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
+        x = torch.zeros([self.seq_len, self.batch_size, self.emb_size]).to(device)
+        logits = torch.zeros([self.seq_len, self.batch_size, self.vocab_size]).to(device)
+        
+        r = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
+        z = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
+        h_tilde = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
+        hidden_seq = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
 
-        hidden_seq_list.append(hidden)
+        hidden_seq[0] = hidden
 
         for t in range(self.seq_len):
-            hidden_layer_list = []
-
             #Embedding
-            x = self.embedding(inputs[t])
-            x = self.dropout(x)
-            
+            x[t] = self.embedding(inputs[t])
+            x[t] = self.dropout(x[t])
+
             for layer in range(self.num_layers):
                 #For the first layer, we use the input
                 if layer == 0:
-                    r = self.activation_r(self.lin_Wr[layer](x) + self.lin_Ur[layer](hidden_seq_list[t][layer]))
-                    z = self.activation_z(self.lin_Wz[layer](x) + self.lin_Uz[layer](hidden_seq_list[t][layer]))
-                    h_tilde = self.activation_h(self.lin_Wh[layer](x) + self.lin_Uh[layer](r*hidden_seq_list[t][layer]))
+                    r[t, layer] = self.lin_Wr[layer](x[t]) + self.lin_Ur[layer](hidden_seq[t, layer])
+                    r[t, layer] = self.activation_r(r[t, layer])
+
+                    z[t, layer] = self.lin_Wz[layer](x[t]) + self.lin_Uz[layer](hidden_seq[t, layer])
+                    z[t, layer] = self.activation_z(z[t, layer])
+
+                    h_tilde[t, layer] = self.lin_Wh[layer](x[t]) + self.lin_Uh[layer](r[t, layer]*hidden_seq[t, layer])
+                    h_tilde[t, layer] = self.activation_h(h_tilde[t, layer])
 
                 #For the other layers, we use the previous layer instead of the input
                 else:
-                    r = self.activation_r(self.lin_Wr[layer](hidden_layer_list[layer-1]) + self.lin_Ur[layer](hidden_seq_list[t][layer]))
-                    z = self.activation_z(self.lin_Wz[layer](hidden_layer_list[layer-1]) + self.lin_Uz[layer](hidden_seq_list[t][layer]))
-                    h_tilde = self.activation_h(self.lin_Wh[layer](hidden_layer_list[layer-1]) + self.lin_Uh[layer](r*hidden_seq_list[t][layer]))
+                    r[t, layer] = self.lin_Wr[layer](hidden[layer-1]) + self.lin_Ur[layer](hidden_seq[t, layer])
+                    r[t, layer] = self.activation_r(r[t, layer])
 
-                hidden_layer_list.append(self.dropout((1-z)*hidden_seq_list[t][layer] + z*h_tilde))
+                    z[t, layer] = self.lin_Wz[layer](hidden[layer-1]) + self.lin_Uz[layer](hidden_seq[t, layer])
+                    z[t, layer] = self.activation_z(z[t, layer])
+
+                    h_tilde[t, layer] = self.lin_Wh[layer](hidden[layer-1]) + self.lin_Uh[layer](r[t, layer]*hidden_seq[t, layer])
+                    h_tilde[t, layer] = self.activation_h(h_tilde[t, layer])
+
+                hidden_seq[t, layer] = (1-z[t, layer])*hidden_seq[t, layer] + z[t, layer]*h_tilde[t, layer]
+                hidden_seq[t, layer] = self.dropout(hidden_seq[t, layer])
             
-            hidden_seq_list.append(torch.stack(hidden_layer_list))
-            logits_list.append(self.lin_Wy(hidden_seq_list[t+1][self.num_layers-1]))
-        
-        logits = torch.stack(logits_list)
-        hidden = hidden_seq_list[self.seq_len]
+            logits[t] = self.lin_Wy(hidden[self.num_layers-1])     
 
         return logits.view(self.seq_len, self.batch_size, self.vocab_size), hidden
 

@@ -77,6 +77,7 @@
 #      GRU.  Implementing this method is not considered part of problems 1/2 
 #      respectively, and will be graded as part of Problem 5.3
 
+
 import argparse
 import time
 import collections
@@ -91,8 +92,8 @@ np = numpy
 
 # NOTE ==============================================
 # This is where your models are imported
-from models import GRU#, RNN 
-from models import make_model as TRANSFORMER
+from models import GRU#RNN, GRU 
+#from models import make_model as TRANSFORMER
 
 
 ##############################################################################
@@ -161,8 +162,8 @@ argsdict['code_file'] = sys.argv[0]
 print("\n########## Setting Up Experiment ######################")
 flags = [flag.lstrip('--').replace('/', '').replace('\\', '') for flag in sys.argv[1:]]
 experiment_path = os.path.join(args.save_dir+'_'.join([argsdict['model'],
-                                        argsdict['optimizer']] 
-                                        + flags))
+                                         argsdict['optimizer']] 
+                                         + flags))
 
 # Increment a counter so that previous results with the same args will not
 # be overwritten. Comment out the next four lines if you only want to keep
@@ -189,21 +190,20 @@ if torch.cuda.is_available():
     device = torch.device("cuda") 
 else:
     print("WARNING: You are about to run on cpu, and this will likely run out \
-    of memory. \n You can try setting batch_size=1 to reduce memory usage")
+      of memory. \n You can try setting batch_size=1 to reduce memory usage")
     device = torch.device("cpu")
 
 
 ###############################################################################
 #
-# 
-#LOADING & PROCESSING
+# LOADING & PROCESSING
 #
 ###############################################################################
 
 # HELPER FUNCTIONS
 def _read_words(filename):
     with open(filename, "r") as f:
-        return f.read().replace("\n", "<eos>").split()
+      return f.read().replace("\n", "<eos>").split()
 
 def _build_vocab(filename):
     data = _read_words(filename)
@@ -320,7 +320,7 @@ elif args.model == 'TRANSFORMER':
     model.seq_len=args.seq_len
     model.vocab_size=vocab_size
 else:
-    print("Model type not recognized.")
+  print("Model type not recognized.")
 
 model = model.to(device)
 
@@ -354,7 +354,7 @@ def repackage_hidden(h):
     This is the case with the way we've processed the Penn Treebank dataset.
     """
     if isinstance(h, Variable):
-        return h.detach_()
+        return h.detach()
     else:
         return tuple(repackage_hidden(v) for v in h)
 
@@ -489,9 +489,9 @@ for epoch in range(num_epochs):
 lc_path = os.path.join(args.save_dir, 'learning_curves.npy')
 print('\nDONE\n\nSaving learning curves to '+lc_path)
 np.save(lc_path, {'train_ppls':train_ppls, 
-                'val_ppls':val_ppls, 
-                'train_losses':train_losses,
-                'val_losses':val_losses})
+                  'val_ppls':val_ppls, 
+                  'train_losses':train_losses,
+                  'val_losses':val_losses})
 # NOTE ==============================================
 # To load these, run 
 # >>> x = np.load(lc_path)[()]
