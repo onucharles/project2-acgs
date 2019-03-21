@@ -163,9 +163,9 @@ class GRUCell(nn.Module):
         self.hidden_size = hidden_size
         self.batch_size = batch_size
 
-        self.lin_Wz = nn.Linear(input_size, hidden_size, False)
-        self.lin_Wr = nn.Linear(input_size, hidden_size, False)
-        self.lin_Wh = nn.Linear(input_size, hidden_size, False)
+        self.lin_Wz = nn.Linear(input_size, hidden_size)
+        self.lin_Wr = nn.Linear(input_size, hidden_size)
+        self.lin_Wh = nn.Linear(input_size, hidden_size)
 
         self.lin_Ur = nn.Linear(hidden_size, hidden_size)
         self.lin_Uz = nn.Linear(hidden_size, hidden_size)
@@ -213,6 +213,10 @@ class GRUCell(nn.Module):
         nn.init.uniform_(self.lin_Wz.weight, -k, k)
         nn.init.uniform_(self.lin_Wr.weight, -k, k)
         nn.init.uniform_(self.lin_Wh.weight, -k, k)
+
+        nn.init.uniform_(self.lin_Wz.bias, -k, k)
+        nn.init.uniform_(self.lin_Wr.bias, -k, k)
+        nn.init.uniform_(self.lin_Wh.bias, -k, k)
 
         nn.init.uniform_(self.lin_Uz.weight, -k, k)
         nn.init.uniform_(self.lin_Ur.weight, -k, k)
@@ -281,17 +285,19 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
         self.activation_y = nn.Softmax()
 
         #Hidden units
-        self.GRU_cell_list = []
         if torch.cuda.is_available():
             device = torch.device("cuda")
         else:
             device = torch.device("cpu")
 
-        for i in range(self.num_layers):
-            if i == 0:
-                self.GRU_cell_list.append(GRUCell(self.emb_size, self.hidden_size, self.batch_size).to(device))
-            else:
-                self.GRU_cell_list.append(GRUCell(self.hidden_size, self.hidden_size, self.batch_size).to(device))
+        self.GRUCells = clones(GRUCell(self.hidden_size, self.hidden_size, self.batch_size).to(device), self.num_layers - 1)
+        self.GRUCells.insert(0, GRUCell(self.emb_size, self.hidden_size, self.batch_size).to(device))
+        # self.GRU_cell_list = []
+        # for i in range(self.num_layers):
+        #     if i == 0:
+        #         self.GRU_cell_list.append(GRUCell(self.emb_size, self.hidden_size, self.batch_size).to(device))
+        #     else:
+        #         self.GRU_cell_list.append(GRUCell(self.hidden_size, self.hidden_size, self.batch_size).to(device))
 
         self.init_weights_uniform()
 
@@ -307,12 +313,12 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
         nn.init.zeros_(self.lin_Wy.bias)
 
         for i in range(self.num_layers):
-            self.GRU_cell_list[i].init_weights_uniform()   
+            self.GRUCells[i].init_weights_uniform()
 
     def init_hidden(self): 
         hidden_layers_list = []
         for i in range(self.num_layers):
-            hidden_layers_list.append(self.GRU_cell_list[i].init_hidden())
+            hidden_layers_list.append(self.GRUCells[i].init_hidden()) #
 
         return torch.stack(hidden_layers_list) # a parameter tensor of shape (self.num_layers, self.batch_size, self.hidden_size)
 
@@ -362,9 +368,9 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
             hidden_layer_list = []
             for layer in range(self.num_layers):
                 if layer == 0:
-                    hidden_layer_list.append(self.dropout(self.GRU_cell_list[layer](x.clone(), hidden_seq_list[t][layer])))
+                    hidden_layer_list.append(self.dropout(self.GRUCells[layer](x.clone(), hidden_seq_list[t][layer])))
                 else:
-                    hidden_layer_list.append(self.dropout(self.GRU_cell_list[layer](hidden_layer_list[layer - 1], hidden_seq_list[t][layer])))
+                    hidden_layer_list.append(self.dropout(self.GRUCells[layer](hidden_layer_list[layer - 1], hidden_seq_list[t][layer])))
             
             hidden_seq_list.append(torch.stack(hidden_layer_list))
 
@@ -416,9 +422,9 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
 
             for layer in range(self.num_layers):
                 if layer == 0: #For the first layer, we use the input
-                    hidden_layer_list.append(self.GRU_cell_list[layer](x, last_generated_hidden[layer]))
+                    hidden_layer_list.append(self.GRUCells[layer](x, last_generated_hidden[layer]))
                 else: #For the other layers, we use the previous layer instead
-                    hidden_layer_list.append(self.GRU_cell_list[layer](hidden_layer_list[layer-1], last_generated_hidden[layer]))
+                    hidden_layer_list.append(self.GRUCells[layer](hidden_layer_list[layer-1], last_generated_hidden[layer]))
             
             last_generated_hidden = torch.stack(hidden_layer_list)
 
