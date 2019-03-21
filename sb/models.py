@@ -1,6 +1,6 @@
 import torch 
 import torch.nn as nn
-
+import os
 import numpy as np
 import torch.nn.functional as F
 import math, copy, time
@@ -698,3 +698,25 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.w_2(self.dropout(F.relu(self.w_1(x))))
 
+#Drawing plots
+def draw_plots(save_dir):
+    lc_path = os.path.join(save_dir, 'learning_curves.npy')
+    x = np.load(lc_path)[()]
+
+    plt.subplot(221)
+    plt.plot(x['train_losses'])
+    plt.title('Train Loss')
+
+    plt.subplot(222)
+    plt.plot(x['train_ppls'])
+    plt.title('Train Ppls')
+
+    plt.subplot(223)
+    plt.plot(x['val_losses'])
+    plt.title('Valid Loss')
+
+    plt.subplot(224)
+    plt.plot(x['val_ppls'])
+    plt.title('Valid Ppls')
+
+    plt.savefig(save_dir + 'figures.png')

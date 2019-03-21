@@ -158,4 +158,5 @@ sb/GRU*
 sb/old*
 # specific files
 myscript
-sb/nohup.out
+
+
