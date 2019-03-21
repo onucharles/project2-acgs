@@ -26,7 +26,17 @@ import matplotlib.pyplot as plt
 #
 # You should not modify the interals of the Transformer
 # except where indicated to implement the multi-head
-# attention. 
+# attention.
+
+# Use the GPU if you have one
+if torch.cuda.is_available():
+    print("Using GPU: " + str(0))
+    device = torch.device("cuda")
+    torch.cuda.set_device(0)
+else:
+    print("WARNING: You are about to run on cpu, and this will likely run out \
+      of memory. \n You can try setting batch_size=1 to reduce memory usage")
+    device = torch.device("cpu")
 
 
 def clones(module, N):
@@ -43,6 +53,7 @@ def clones(module, N):
     return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
 
 # Problem 1
+
 class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities.
   def __init__(self, emb_size, hidden_size, seq_len, batch_size, vocab_size, num_layers, dp_keep_prob):
     """
@@ -57,6 +68,12 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
                   Do not apply dropout on recurrent connections.
     """
     super(RNN, self).__init__()
+    self.emb_size = emb_size
+    self.hidden_size = hidden_size
+    self.seq_len = seq_len
+    self.batch_size = batch_size
+    self.vocab_size = vocab_size
+    self.num_layers = num_layers
 
     # TODO ========================
     # Initialization of the parameters of the recurrent and fc layers. 
@@ -72,6 +89,11 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
     # for Pytorch to recognize these parameters as belonging to this nn.Module 
     # and compute their gradients automatically. You're not obligated to use the
     # provided clones function.
+    self.init_weights()
+    self.dropout1 = nn.Dropout(1 - dp_keep_prob)
+    self.dropout2 = nn.Dropout(1 - dp_keep_prob)
+    self.tanh = nn.Tanh()
+    self.sigmoid = nn.Sigmoid()
 
   def init_weights(self):
     # TODO ========================
@@ -79,7 +101,14 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
     # and output biases to 0 (in place). The embeddings should not use a bias vector.
     # Initialize all other (i.e. recurrent and linear) weights AND biases uniformly 
     # in the range [-k, k] where k is the square root of 1/hidden_size
-    return 0
+    self.embedding = nn.Embedding(self.vocab_size, self.emb_size)
+    self.Wx_linear = nn.Linear(self.emb_size, self.hidden_size, bias=False)
+    self.Wh_linear = nn.Linear(self.hidden_size, self.hidden_size, bias=True)
+    self.Wy_linear = nn.Linear(self.hidden_size, self.vocab_size, bias=True)
+
+    nn.init.uniform_(self.embedding.weight, a=-0.1, b=0.1)
+    nn.init.uniform_(self.Wy_linear.weight, a=-0.1, b=0.1)
+    nn.init.constant_(self.Wy_linear.bias, val=0)
 
   def init_hidden(self):
     # TODO ========================
@@ -87,7 +116,8 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
     """
     This is used for the first mini-batch in an epoch, only.
     """
-    return # a parameter tensor of shape (self.num_layers, self.batch_size, self.hidden_size)
+    init_hidden_state = torch.zeros([self.num_layers, self.batch_size, self.hidden_size], dtype=torch.float32)
+    return init_hidden_state # a parameter tensor of shape (self.num_layers, self.batch_size, self.hidden_size)
 
   def forward(self, inputs, hidden):
     # TODO ========================
@@ -125,6 +155,42 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
               if you are curious.
                     shape: (num_layers, batch_size, hidden_size)
     """
+    logits = torch.zeros([self.seq_len, self.batch_size, self.vocab_size], dtype=torch.float32).to(device)
+
+    # hidden = hidden[0, :, :]
+    for time_idx in range(self.seq_len):
+        layer_idx = 0
+        cur_hidden = hidden[layer_idx, :, :].clone()           # (batch_size, hidden_size)
+        # print('cur_hidden is ', cur_hidden.size())
+
+        # get current word for entire batch.
+        cur_word = inputs[time_idx, :]                         # (batch_size, 1)
+        # print('cur_word is ', cur_word.size())
+
+        # get embedding from indices
+        cur_word_embedding = self.embedding(cur_word)   # (batch_size, emb_size)
+        # print('cur_word_embedding is ', cur_word_embedding.size())
+
+        # add dropout.
+        cur_word_embedding = self.dropout1(cur_word_embedding)
+
+        # compute hidden state.
+        x = self.Wx_linear(cur_word_embedding)
+        y = self.Wh_linear(cur_hidden).clone()
+        z = x + y
+        hidden_t_plus_one = self.tanh(z) # (batch_size, hidden_size)
+        hidden[layer_idx, :, :] = hidden_t_plus_one
+        # print('hidden_t_plus_one is now ', hidden_t_plus_one.size())
+
+        # comput logit over hidden state.
+        y_t = self.sigmoid(self.Wy_linear(hidden_t_plus_one)) # (batch_size, vocab_size)
+
+        # add dropout
+        y_t = self.dropout2(y_t)
+
+        logits[time_idx, :, :] = y_t
+        # print('time step ', time_idx)
+
     return logits.view(self.seq_len, self.batch_size, self.vocab_size), hidden
 
   def generate(self, input, hidden, generated_seq_len):
