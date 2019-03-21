@@ -206,8 +206,87 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
    
     return samples
 
-
 # Problem 2
+class GRUCell(nn.Module):
+    def __init__(self, input_size, hidden_size, input_bias=True): #, batch_size):
+        super().__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.input_bias = input_bias
+        # self.batch_size = batch_size
+
+        self.lin_Wz = nn.Linear(input_size, hidden_size, input_bias)
+        self.lin_Wr = nn.Linear(input_size, hidden_size, input_bias)
+        self.lin_Wh = nn.Linear(input_size, hidden_size, input_bias)
+
+        self.lin_Ur = nn.Linear(hidden_size, hidden_size)
+        self.lin_Uz = nn.Linear(hidden_size, hidden_size)
+        self.lin_Uh = nn.Linear(hidden_size, hidden_size)
+
+        # Activation functions
+        self.activation_z = nn.Sigmoid()
+        self.activation_r = nn.Sigmoid()
+        self.activation_h = nn.Tanh()
+
+    def forward(self, input, hidden):
+        """
+        Arguments:
+            - inputs: A mini-batch of input, produced by the previous layer.
+                            shape: (batch_size, input_size)
+            - hidden: The initial hidden state for the GRU Cell.
+                            shape: (batch_size, hidden_size)
+
+        Returns:
+            - The final hidden state of the GRU Cell.
+                This will be used as the initial hidden state for all the
+                mini-batches in an epoch, except for the first, where the return
+                value of self.init_hidden will be used.
+                See the repackage_hiddens function in ptb-lm.py for more details,
+                if you are curious.
+                        shape: (batch_size, hidden_size)
+        """
+
+        r = self.lin_Wr(input) + self.lin_Ur(hidden)
+        r = self.activation_r(r)
+
+        z = self.lin_Wz(input) + self.lin_Uz(hidden)
+        z = self.activation_z(z)
+
+        h = self.lin_Wh(input) + self.lin_Uh(r * hidden)
+        h = self.activation_h(h)
+
+        new_hidden = (1 - z) * hidden + z * h
+
+        return new_hidden
+
+    def init_weights_uniform(self):
+        k = 1 / math.sqrt(self.hidden_size)
+
+        nn.init.uniform_(self.lin_Wz.weight, -k, k)
+        nn.init.uniform_(self.lin_Wr.weight, -k, k)
+        nn.init.uniform_(self.lin_Wh.weight, -k, k)
+
+        if self.input_bias:
+            nn.init.uniform_(self.lin_Wz.bias, -k, k)
+            nn.init.uniform_(self.lin_Wr.bias, -k, k)
+            nn.init.uniform_(self.lin_Wh.bias, -k, k)
+
+        nn.init.uniform_(self.lin_Uz.weight, -k, k)
+        nn.init.uniform_(self.lin_Ur.weight, -k, k)
+        nn.init.uniform_(self.lin_Uh.weight, -k, k)
+
+        nn.init.uniform_(self.lin_Uz.bias, -k, k)
+        nn.init.uniform_(self.lin_Ur.bias, -k, k)
+        nn.init.uniform_(self.lin_Uh.bias, -k, k)
+
+    # def init_hidden(self):
+    #     if torch.cuda.is_available():
+    #         hidden = nn.Parameter(torch.zeros(self.batch_size, self.hidden_size).cuda())
+    #     else:
+    #         hidden = nn.Parameter(torch.zeros(self.batch_size, self.hidden_size))
+    #
+    #     return hidden
+
 class GRU(nn.Module): # Implement a stacked GRU RNN
   """
   Follow the same instructions as for RNN (above), but use the equations for 
@@ -215,24 +294,61 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
   """
   def __init__(self, emb_size, hidden_size, seq_len, batch_size, vocab_size, num_layers, dp_keep_prob):
     super(GRU, self).__init__()
+    self.emb_size = emb_size
+    self.hidden_size = hidden_size
+    self.seq_len = seq_len
+    self.batch_size = batch_size
+    self.vocab_size = vocab_size
+    self.num_layers = num_layers
 
     # TODO ========================
+    self.init_weights_uniform()
+    self.dropout = nn.Dropout(1 - dp_keep_prob)
 
   def init_weights_uniform(self):
     # TODO ========================
-    hello = 0
+    self.embedding = nn.Embedding(self.vocab_size, self.emb_size)
+    self.gru_cells = clones(GRUCell(self.hidden_size, self.hidden_size, input_bias=True), self.num_layers - 1) # should other linear cells have a bias?
+    self.gru_cells.insert(0, GRUCell(self.emb_size, self.hidden_size, input_bias=False))
+    self.Wy_linear = nn.Linear(self.hidden_size, self.vocab_size, bias=True)
+
+    nn.init.uniform_(self.embedding.weight, a=-0.1, b=0.1)
+    nn.init.uniform_(self.Wy_linear.weight, a=-0.1, b=0.1)
+    nn.init.constant_(self.Wy_linear.bias, val=0)
+    for i in range(self.num_layers):
+        self.gru_cells[i].init_weights_uniform()
 
   def init_hidden(self):
     # TODO ========================
-    return # a parameter tensor of shape (self.num_layers, self.batch_size, self.hidden_size)
+    init_hidden_state = nn.Parameter(
+        torch.zeros([self.num_layers, self.batch_size, self.hidden_size], dtype=torch.float32))
+    return init_hidden_state # a parameter tensor of shape (self.num_layers, self.batch_size, self.hidden_size)
 
   def forward(self, inputs, hidden):
     # TODO ========================
+    logits = torch.zeros([self.seq_len, self.batch_size, self.vocab_size],
+                         dtype=torch.float32).to(device)
+    word_embeddings = self.embedding(inputs)  # (seq_len, batch_size, emb_size)
+
+    for time_idx in range(self.seq_len):
+        x = self.dropout(word_embeddings[time_idx, :, :])
+
+        for layer_idx in range(self.num_layers):
+            cur_hidden = hidden[layer_idx, :, :].clone()
+            x = self.gru_cells[layer_idx](x, cur_hidden)
+            hidden[layer_idx, :, :] = x  # (batch_size, hidden_size)
+            x = self.dropout(x)
+
+        y_t = self.Wy_linear(x)
+        logits[time_idx, :, :] = y_t
     return logits.view(self.seq_len, self.batch_size, self.vocab_size), hidden
 
   def generate(self, input, hidden, generated_seq_len):
     # TODO ========================
     return samples
+
+
+
 
 
 # Problem 3

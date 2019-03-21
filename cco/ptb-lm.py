@@ -488,6 +488,7 @@ for epoch in range(num_epochs):
     experiment.log_metric("learning_rate", lr, step=epoch)
 
     # RUN MODEL ON TRAINING DATA
+    # with torch.autograd.set_detect_anomaly(True):
     train_ppl, train_loss = run_epoch(model, train_data, True, lr)
     # experiment.log_metric("train_loss", np.mean(train_loss), step=epoch)
     experiment.log_metric("train_perplexity", train_ppl, step=epoch)
