@@ -376,49 +376,6 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
 
         return logits.view(self.seq_len, self.batch_size, self.vocab_size), new_hidden
 
-        
-        
-        # device = torch.device("cuda")
-
-        # #x = torch.zeros([self.seq_len, self.batch_size, self.emb_size]).to(device)
-        # logits_list = []#torch.zeros([self.seq_len, self.batch_size, self.vocab_size]).to(device)
-        # hidden_seq_list = []
-        # #r = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
-        # #z = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
-        # #h_tilde = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
-
-        # hidden_seq_list.append(hidden)
-
-        # for t in range(self.seq_len):
-        #     hidden_layer_list = []
-
-        #     #Embedding
-        #     x = self.embedding(inputs[t])
-        #     x = self.dropout(x)
-            
-        #     for layer in range(self.num_layers):
-        #         #For the first layer, we use the input
-        #         if layer == 0:
-        #             r = self.activation_r(self.lin_Wr[layer](x) + self.lin_Ur[layer](hidden_seq_list[t][layer]))
-        #             z = self.activation_z(self.lin_Wz[layer](x) + self.lin_Uz[layer](hidden_seq_list[t][layer]))
-        #             h_tilde = self.activation_h(self.lin_Wh[layer](x) + self.lin_Uh[layer](r*hidden_seq_list[t][layer]))
-
-        #         #For the other layers, we use the previous layer instead of the input
-        #         else:
-        #             r = self.activation_r(self.lin_Wr[layer](hidden_layer_list[layer-1]) + self.lin_Ur[layer](hidden_seq_list[t][layer]))
-        #             z = self.activation_z(self.lin_Wz[layer](hidden_layer_list[layer-1]) + self.lin_Uz[layer](hidden_seq_list[t][layer]))
-        #             h_tilde = self.activation_h(self.lin_Wh[layer](hidden_layer_list[layer-1]) + self.lin_Uh[layer](r*hidden_seq_list[t][layer]))
-
-        #         hidden_layer_list.append(self.dropout((1-z)*hidden_seq_list[t][layer] + z*h_tilde))
-            
-        #     hidden_seq_list.append(torch.stack(hidden_layer_list))
-        #     logits_list.append(self.lin_Wy(hidden_seq_list[t+1][self.num_layers-1]))
-        
-        # logits = torch.stack(logits_list)
-        # hidden = hidden_seq_list[self.seq_len]
-
-        # return logits, hidden#.view(self.seq_len, self.batch_size, self.vocab_size), hidden
-
     def generate(self, input, hidden, generated_seq_len):
         # TODO ========================
         # Compute the forward pass, as in the self.forward method (above).
@@ -446,48 +403,26 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
         """
 
         samples = torch.zeros([generated_seq_len, self.batch_size], dtype=torch.int)
+        last_generated_hidden = [hidden]
 
         for t in range(generated_seq_len):
-            #For the first sample, we use the input
-            if t == 0:
-                #Embedding
+            if t == 0: #For the first sample, we use the input
                 x = self.embedding(input)
-            #Otherwise we use the previous prediction
-            else:
-                x = self.embedding(samples[t-1])
-                
+            else: #Otherwise we use the previous prediction
+                x = self.embedding(samples[t-1]) 
             #x[0] = self.dropout(x[0])
+                
+            hidden_layer_list = []
 
             for layer in range(self.num_layers):
-                #For the first layer, we use the input
-                if layer == 0:
-                    r = self.lin_Wr[layer](x) + self.lin_Ur[layer](hidden[layer])
-                    r = self.activation_r(r)
-
-                    z = self.lin_Wz[layer](x) + self.lin_Uz[layer](hidden[layer])
-                    z = self.activation_z(z)
-
-                    h_tilde = self.lin_Wh[layer](x) + self.lin_Uh[layer](r*hidden[layer])
-                    h_tilde = self.activation_h(h_tilde)
-
-                #For the other layers, we use the previous layer instead of the input
-                else:
-                    r = self.lin_Wr[layer](hidden[layer-1]) + self.lin_Ur[layer](hidden[layer])
-                    r = self.activation_r(r)
-
-                    z = self.lin_Wz[layer](hidden[layer-1]) + self.lin_Uz[layer](hidden[layer])
-                    z = self.activation_z(z)
-
-                    h_tilde = self.lin_Wh[layer](hidden[layer-1]) + self.lin_Uh[layer](r*hidden[layer])
-                    h_tilde = self.activation_h(h_tilde)
-
-                hidden[layer] = (1-z)*hidden[layer] + z*h_tilde
-                #hidden[layer] = self.dropout(hidden[layer])
+                if layer == 0: #For the first layer, we use the input
+                    hidden_layer_list.append(self.GRU_cell_list[layer](x, last_generated_hidden[layer]))
+                else: #For the other layers, we use the previous layer instead
+                    hidden_layer_list.append(self.GRU_cell_list[layer](hidden_layer_list[layer-1], last_generated_hidden[layer]))
             
-            y = self.lin_Wy(hidden[self.num_layers])
-            y = self.activation_y(y)
-            
-            samples[t] = torch.argmax(y, dim=1)
+            last_generated_hidden = torch.stack(hidden_layer_list)
+
+            samples[t] = torch.argmax(self.activation_y(self.lin_Wy(last_generated_hidden[self.num_layers-1])), dim=1)
 
         return samples
 

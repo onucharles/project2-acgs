@@ -354,7 +354,7 @@ def repackage_hidden(h):
     This is the case with the way we've processed the Penn Treebank dataset.
     """
     if isinstance(h, Variable):
-        return h.detach()
+        return h.detach_()
     else:
         return tuple(repackage_hidden(v) for v in h)
 
