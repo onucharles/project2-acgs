@@ -156,6 +156,81 @@ def clones(module, N):
 
 
 # Problem 2
+class GRUCell(nn.Module):
+    def __init__(self, input_size, hidden_size, batch_size):
+        super().__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.batch_size = batch_size
+
+        self.lin_Wz = nn.Linear(input_size, hidden_size, False)
+        self.lin_Wr = nn.Linear(input_size, hidden_size, False)
+        self.lin_Wh = nn.Linear(input_size, hidden_size, False)
+
+        self.lin_Ur = nn.Linear(hidden_size, hidden_size)
+        self.lin_Uz = nn.Linear(hidden_size, hidden_size)
+        self.lin_Uh = nn.Linear(hidden_size, hidden_size)
+
+        # Activation functions
+        self.activation_z = nn.Sigmoid()
+        self.activation_r = nn.Sigmoid()
+        self.activation_h = nn.Tanh()
+
+    def forward(self, input, hidden):
+        """
+        Arguments:
+            - inputs: A mini-batch of input, produced by the previous layer.
+                            shape: (batch_size, input_size)
+            - hidden: The initial hidden state for the GRU Cell.
+                            shape: (batch_size, hidden_size)
+        
+        Returns:
+            - The final hidden state of the GRU Cell.
+                This will be used as the initial hidden state for all the 
+                mini-batches in an epoch, except for the first, where the return 
+                value of self.init_hidden will be used.
+                See the repackage_hiddens function in ptb-lm.py for more details, 
+                if you are curious.
+                        shape: (batch_size, hidden_size)
+        """
+        
+        r = self.lin_Wr(input) + self.lin_Ur(hidden)
+        r = self.activation_r(r)
+        
+        z = self.lin_Wz(input) + self.lin_Uz(hidden)
+        z = self.activation_z(z)
+
+        h = self.lin_Wh(input) + self.lin_Uh(r*hidden)
+        h = self.activation_h(h)
+
+        new_hidden = (1 - z)*hidden + z*h
+
+        return new_hidden
+
+    def init_weights_uniform(self):
+        k = 1 / math.sqrt(self.hidden_size)
+
+        nn.init.uniform_(self.lin_Wz.weight, -k, k)
+        nn.init.uniform_(self.lin_Wr.weight, -k, k)
+        nn.init.uniform_(self.lin_Wh.weight, -k, k)
+
+        nn.init.uniform_(self.lin_Uz.weight, -k, k)
+        nn.init.uniform_(self.lin_Ur.weight, -k, k)
+        nn.init.uniform_(self.lin_Uh.weight, -k, k)
+
+        nn.init.uniform_(self.lin_Uz.bias, -k, k)
+        nn.init.uniform_(self.lin_Ur.bias, -k, k)
+        nn.init.uniform_(self.lin_Uh.bias, -k, k)
+
+    def init_hidden(self):
+        if torch.cuda.is_available():
+            hidden = Variable(torch.zeros(self.batch_size, self.hidden_size).cuda())
+        else:
+            hidden = Variable(torch.zeros(self.batch_size, self.hidden_size))
+
+        return hidden
+    
+
 class GRU(nn.Module): # Implement a stacked GRU RNN
     """
     Follow the same instructions as for RNN (above), but use the equations for 
@@ -201,28 +276,24 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
         #Embedding unit
         self.embedding = nn.Embedding(vocab_size, emb_size)
         
-        # Activation functions
-        self.activation_z = nn.Sigmoid()
-        self.activation_r = nn.Sigmoid()
-        self.activation_h = nn.Tanh()
+        # Output Unit
+        self.lin_Wy = nn.Linear(hidden_size, vocab_size)
         self.activation_y = nn.Softmax()
 
-        # Linear Units
-        self.lin_Wz = clones(nn.Linear(hidden_size, hidden_size, False), num_layers)
-        self.lin_Wr = clones(nn.Linear(hidden_size, hidden_size, False), num_layers)
-        self.lin_Wh = clones(nn.Linear(hidden_size, hidden_size, False), num_layers)
+        #Hidden units
+        self.GRU_cell_list = []
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+        else:
+            device = torch.device("cpu")
 
-        self.lin_Wz[0] = nn.Linear(emb_size, hidden_size, False)
-        self.lin_Wr[0] = nn.Linear(emb_size, hidden_size, False)
-        self.lin_Wh[0] = nn.Linear(emb_size, hidden_size, False)
+        for i in range(self.num_layers):
+            if i == 0:
+                self.GRU_cell_list.append(GRUCell(self.emb_size, self.hidden_size, self.batch_size).to(device))
+            else:
+                self.GRU_cell_list.append(GRUCell(self.hidden_size, self.hidden_size, self.batch_size).to(device))
 
-        self.lin_Ur = clones(nn.Linear(hidden_size, hidden_size), num_layers)
-        self.lin_Uz = clones(nn.Linear(hidden_size, hidden_size), num_layers)
-        self.lin_Uh = clones(nn.Linear(hidden_size, hidden_size), num_layers)
-
-        self.lin_Wy = nn.Linear(hidden_size, vocab_size)
-        self.init_weights_uniform
-
+        self.init_weights_uniform()
 
     def init_weights_uniform(self):
         # TODO ========================
@@ -235,25 +306,15 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
         nn.init.uniform_(self.lin_Wy.weight, -0.1, 0.1)
         nn.init.zeros_(self.lin_Wy.bias)
 
-        k = 1/math.sqrt(self.hidden_size)
-
         for i in range(self.num_layers):
-            nn.init.uniform_(self.lin_Wz[i].weight, -k, k)
-            nn.init.uniform_(self.lin_Wr[i].weight, -k, k)
-            nn.init.uniform_(self.lin_Wh[i].weight, -k, k)
-
-            nn.init.uniform_(self.lin_Uz[i].weight, -k, k)
-            nn.init.uniform_(self.lin_Ur[i].weight, -k, k)
-            nn.init.uniform_(self.lin_Uh[i].weight, -k, k)
-
-            nn.init.uniform_(self.lin_Uz[i].bias, -k, k)
-            nn.init.uniform_(self.lin_Ur[i].bias, -k, k)
-            nn.init.uniform_(self.lin_Uh[i].bias, -k, k)
+            self.GRU_cell_list[i].init_weights_uniform()   
 
     def init_hidden(self): 
-        hidden = torch.zeros([self.num_layers, self.batch_size, self.hidden_size], dtype=torch.float)
-        
-        return hidden # a parameter tensor of shape (self.num_layers, self.batch_size, self.hidden_size)
+        hidden_layers_list = []
+        for i in range(self.num_layers):
+            hidden_layers_list.append(self.GRU_cell_list[i].init_hidden())
+
+        return torch.stack(hidden_layers_list) # a parameter tensor of shape (self.num_layers, self.batch_size, self.hidden_size)
 
     def forward(self, inputs, hidden):
         # TODO ========================
@@ -291,46 +352,72 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
                 if you are curious.
                         shape: (num_layers, batch_size, hidden_size)
         """
-        device = torch.device("cuda")
-
-        #x = torch.zeros([self.seq_len, self.batch_size, self.emb_size]).to(device)
-        logits_list = []#torch.zeros([self.seq_len, self.batch_size, self.vocab_size]).to(device)
-        hidden_seq_list = []
-        #r = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
-        #z = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
-        #h_tilde = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
-
-        hidden_seq_list.append(hidden)
+        hidden_seq_list = [hidden]
+        logits_list = []
 
         for t in range(self.seq_len):
-            hidden_layer_list = []
-
-            #Embedding
             x = self.embedding(inputs[t])
             x = self.dropout(x)
-            
+
+            hidden_layer_list = []
             for layer in range(self.num_layers):
-                #For the first layer, we use the input
                 if layer == 0:
-                    r = self.activation_r(self.lin_Wr[layer](x) + self.lin_Ur[layer](hidden_seq_list[t][layer]))
-                    z = self.activation_z(self.lin_Wz[layer](x) + self.lin_Uz[layer](hidden_seq_list[t][layer]))
-                    h_tilde = self.activation_h(self.lin_Wh[layer](x) + self.lin_Uh[layer](r*hidden_seq_list[t][layer]))
-
-                #For the other layers, we use the previous layer instead of the input
+                    hidden_layer_list.append(self.dropout(self.GRU_cell_list[layer](x.clone(), hidden_seq_list[t][layer])))
                 else:
-                    r = self.activation_r(self.lin_Wr[layer](hidden_layer_list[layer-1]) + self.lin_Ur[layer](hidden_seq_list[t][layer]))
-                    z = self.activation_z(self.lin_Wz[layer](hidden_layer_list[layer-1]) + self.lin_Uz[layer](hidden_seq_list[t][layer]))
-                    h_tilde = self.activation_h(self.lin_Wh[layer](hidden_layer_list[layer-1]) + self.lin_Uh[layer](r*hidden_seq_list[t][layer]))
-
-                hidden_layer_list.append(self.dropout((1-z)*hidden_seq_list[t][layer] + z*h_tilde))
+                    hidden_layer_list.append(self.dropout(self.GRU_cell_list[layer](hidden_layer_list[layer - 1], hidden_seq_list[t][layer])))
             
             hidden_seq_list.append(torch.stack(hidden_layer_list))
-            logits_list.append(self.lin_Wy(hidden_seq_list[t+1][self.num_layers-1]))
-        
-        logits = torch.stack(logits_list)
-        hidden = hidden_seq_list[self.seq_len]
 
-        return logits.view(self.seq_len, self.batch_size, self.vocab_size), hidden
+            logits_list.append(self.lin_Wy(hidden_layer_list[self.num_layers-1]))
+        
+        new_hidden = hidden_seq_list[self.seq_len]
+        logits = torch.stack(logits_list)
+        
+
+        return logits.view(self.seq_len, self.batch_size, self.vocab_size), new_hidden
+
+        
+        
+        # device = torch.device("cuda")
+
+        # #x = torch.zeros([self.seq_len, self.batch_size, self.emb_size]).to(device)
+        # logits_list = []#torch.zeros([self.seq_len, self.batch_size, self.vocab_size]).to(device)
+        # hidden_seq_list = []
+        # #r = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
+        # #z = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
+        # #h_tilde = torch.zeros([self.seq_len, self.num_layers, self.batch_size, self.hidden_size]).to(device)
+
+        # hidden_seq_list.append(hidden)
+
+        # for t in range(self.seq_len):
+        #     hidden_layer_list = []
+
+        #     #Embedding
+        #     x = self.embedding(inputs[t])
+        #     x = self.dropout(x)
+            
+        #     for layer in range(self.num_layers):
+        #         #For the first layer, we use the input
+        #         if layer == 0:
+        #             r = self.activation_r(self.lin_Wr[layer](x) + self.lin_Ur[layer](hidden_seq_list[t][layer]))
+        #             z = self.activation_z(self.lin_Wz[layer](x) + self.lin_Uz[layer](hidden_seq_list[t][layer]))
+        #             h_tilde = self.activation_h(self.lin_Wh[layer](x) + self.lin_Uh[layer](r*hidden_seq_list[t][layer]))
+
+        #         #For the other layers, we use the previous layer instead of the input
+        #         else:
+        #             r = self.activation_r(self.lin_Wr[layer](hidden_layer_list[layer-1]) + self.lin_Ur[layer](hidden_seq_list[t][layer]))
+        #             z = self.activation_z(self.lin_Wz[layer](hidden_layer_list[layer-1]) + self.lin_Uz[layer](hidden_seq_list[t][layer]))
+        #             h_tilde = self.activation_h(self.lin_Wh[layer](hidden_layer_list[layer-1]) + self.lin_Uh[layer](r*hidden_seq_list[t][layer]))
+
+        #         hidden_layer_list.append(self.dropout((1-z)*hidden_seq_list[t][layer] + z*h_tilde))
+            
+        #     hidden_seq_list.append(torch.stack(hidden_layer_list))
+        #     logits_list.append(self.lin_Wy(hidden_seq_list[t+1][self.num_layers-1]))
+        
+        # logits = torch.stack(logits_list)
+        # hidden = hidden_seq_list[self.seq_len]
+
+        # return logits, hidden#.view(self.seq_len, self.batch_size, self.vocab_size), hidden
 
     def generate(self, input, hidden, generated_seq_len):
         # TODO ========================
