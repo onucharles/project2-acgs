@@ -90,10 +90,8 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
     # and compute their gradients automatically. You're not obligated to use the
     # provided clones function.
     self.init_weights()
-    self.dropout1 = nn.Dropout(1 - dp_keep_prob)
-    self.dropout2 = nn.Dropout(1 - dp_keep_prob)
+    self.dropout = nn.Dropout(1 - dp_keep_prob)
     self.tanh = nn.Tanh()
-    self.sigmoid = nn.Sigmoid()
 
   def init_weights(self):
     # TODO ========================
@@ -102,13 +100,19 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
     # Initialize all other (i.e. recurrent and linear) weights AND biases uniformly 
     # in the range [-k, k] where k is the square root of 1/hidden_size
     self.embedding = nn.Embedding(self.vocab_size, self.emb_size)
-    self.Wx_linear = nn.Linear(self.emb_size, self.hidden_size, bias=False)
-    self.Wh_linear = nn.Linear(self.hidden_size, self.hidden_size, bias=True)
+    self.Wx_linear = clones(nn.Linear(self.hidden_size, self.hidden_size,
+        bias=True), self.num_layers - 1)
+    self.Wx_linear.insert(0, nn.Linear(self.emb_size, self.hidden_size,
+        bias=False))
+    self.Wh_linear = clones(nn.Linear(self.hidden_size, self.hidden_size,
+        bias=True), self.num_layers)
     self.Wy_linear = nn.Linear(self.hidden_size, self.vocab_size, bias=True)
 
     nn.init.uniform_(self.embedding.weight, a=-0.1, b=0.1)
     nn.init.uniform_(self.Wy_linear.weight, a=-0.1, b=0.1)
     nn.init.constant_(self.Wy_linear.bias, val=0)
+    nn.init.uniform_(self.Wx_linear[0].weight, a=-math.sqrt(1/self.hidden_size),
+            b=math.sqrt(1/self.hidden_size))
 
   def init_hidden(self):
     # TODO ========================
@@ -116,7 +120,7 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
     """
     This is used for the first mini-batch in an epoch, only.
     """
-    init_hidden_state = torch.zeros([self.num_layers, self.batch_size, self.hidden_size], dtype=torch.float32)
+    init_hidden_state = nn.Parameter(torch.zeros([self.num_layers, self.batch_size, self.hidden_size], dtype=torch.float32))
     return init_hidden_state # a parameter tensor of shape (self.num_layers, self.batch_size, self.hidden_size)
 
   def forward(self, inputs, hidden):
@@ -155,41 +159,22 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
               if you are curious.
                     shape: (num_layers, batch_size, hidden_size)
     """
-    logits = torch.zeros([self.seq_len, self.batch_size, self.vocab_size], dtype=torch.float32).to(device)
+    logits = torch.zeros([self.seq_len, self.batch_size, self.vocab_size],
+            dtype=torch.float32).to(device)
+    word_embeddings = self.embedding(inputs)    # (seq_len, batch_size, emb_size)
 
-    # hidden = hidden[0, :, :]
     for time_idx in range(self.seq_len):
-        layer_idx = 0
-        cur_hidden = hidden[layer_idx, :, :].clone()           # (batch_size, hidden_size)
-        # print('cur_hidden is ', cur_hidden.size())
+        x = self.dropout(word_embeddings[time_idx, :, :])
 
-        # get current word for entire batch.
-        cur_word = inputs[time_idx, :]                         # (batch_size, 1)
-        # print('cur_word is ', cur_word.size())
+        for layer_idx in range(self.num_layers):
+            cur_hidden = hidden[layer_idx, :, :].clone()
+            x = self.tanh(self.Wx_linear[layer_idx](x)
+                    + self.Wh_linear[layer_idx](cur_hidden))
+            hidden[layer_idx,:,:] = x       # (batch_size, hidden_size)
+            x = self.dropout(x)
 
-        # get embedding from indices
-        cur_word_embedding = self.embedding(cur_word)   # (batch_size, emb_size)
-        # print('cur_word_embedding is ', cur_word_embedding.size())
-
-        # add dropout.
-        cur_word_embedding = self.dropout1(cur_word_embedding)
-
-        # compute hidden state.
-        x = self.Wx_linear(cur_word_embedding)
-        y = self.Wh_linear(cur_hidden).clone()
-        z = x + y
-        hidden_t_plus_one = self.tanh(z) # (batch_size, hidden_size)
-        hidden[layer_idx, :, :] = hidden_t_plus_one
-        # print('hidden_t_plus_one is now ', hidden_t_plus_one.size())
-
-        # comput logit over hidden state.
-        y_t = self.sigmoid(self.Wy_linear(hidden_t_plus_one)) # (batch_size, vocab_size)
-
-        # add dropout
-        y_t = self.dropout2(y_t)
-
+        y_t = self.Wy_linear(x)
         logits[time_idx, :, :] = y_t
-        # print('time step ', time_idx)
 
     return logits.view(self.seq_len, self.batch_size, self.vocab_size), hidden
 
