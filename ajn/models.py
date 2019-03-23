@@ -77,7 +77,7 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
         self.batch_size = batch_size
         self.vocab_size = vocab_size
         self.num_layers = num_layers
-        self.minibatch_grad_rnn = Minibatch_Grad_Model(vocab_size, hidden_size)
+        self.minibatch_grad_rnn = RNN_BPTT(vocab_size, hidden_size)
         # TODO ========================
         # Initialization of the parameters of the recurrent and fc layers.
         # Your implementation should support any number of stacked hidden layers
@@ -306,7 +306,7 @@ class GRU(nn.Module):  # Implement a stacked GRU RNN
         self.batch_size = batch_size
         self.vocab_size = vocab_size
         self.num_layers = num_layers
-
+        self.minibatch_grad_rnn = Gru_BPTT(vocab_size, hidden_size)
         # TODO ========================
         self.init_weights_uniform()
         self.dropout = nn.Dropout(1 - dp_keep_prob)
@@ -672,13 +672,17 @@ class Softmax:
         return exp_scores / np.sum(exp_scores)
 
     def loss(self, x, y):
-        self.probs = self.predict(x)
-        return -np.log(self.probs[y])
+        probs = self.predict(x)
+        return -np.log(probs[y])
 
     def diff(self, x, y):
         probs = self.predict(x)
         probs[y] -= 1.0
         return probs
+
+    def forward(self, x, tau = 1.0):
+        e = np.exp( np.array(x) / tau )
+        return e / np.sum( e )
 
 class Sigmoid:
     def forward(self, x):
@@ -740,7 +744,8 @@ class RNNLayer:
         return (dprev_s, dU, dW, dV)
 
 
-class Minibatch_Grad_Model:
+class RNN_BPTT:
+
     def __init__(self, word_dim, hidden_dim=100, bp_truncate=4):
         self.word_dim = word_dim
         self.hidden_dim = hidden_dim
@@ -755,11 +760,6 @@ class Minibatch_Grad_Model:
         self.time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     def forward_propagation(self, x):
-        '''
-        Predict word probabilities 
-        :param x: one single data
-        :return: y predicted (batch of data)
-        '''
         # The total number of time steps
         T = len(x)
         layers = []
@@ -794,7 +794,7 @@ class Minibatch_Grad_Model:
             loss += self.calculate_loss(X[i], Y[i])
         return loss / float(len(Y))
 
-    def backward_propagation(self, x, y):
+    def bptt(self, x, y):
         assert len(x) == len(y)
         output = Softmax()
         layers = self.forward_propagation(x)
@@ -825,8 +825,154 @@ class Minibatch_Grad_Model:
         return (dU, dW, dV)
 
     def sgd_step(self, x, y, learning_rate):
-        self.time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        dU, dW, dV = self.backward_propagation(x, y)
+        dU, dW, dV = self.bptt(x, y)
         self.U -= learning_rate * dU
         self.V -= learning_rate * dV
         self.W -= learning_rate * dW
+
+    def train(self, rep_tensor, learning_rate=0.005, nepoch=100, evaluate_loss_after=5):
+        num_examples_seen = 0
+        num_steps = 30
+        losses = []
+        for epoch in range(nepoch):
+            X = rep_tensor[:, epoch * num_steps:(epoch + 1) * num_steps]
+            Y = rep_tensor[:, epoch * num_steps + 1:(epoch + 1) * num_steps + 1]
+            if (epoch % evaluate_loss_after == 0):
+                loss = self.calculate_total_loss(X, Y)
+                losses.append((num_examples_seen, loss))
+                time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                print("%s: Loss after num_examples_seen=%d epoch=%d: %f" % (time, num_examples_seen, epoch, loss))
+                # Adjust the learning rate if loss increases
+                if len(losses) > 1 and losses[-1][1] > losses[-2][1]:
+                    learning_rate = learning_rate * 0.5
+                    print("Setting learning rate to %f" % learning_rate)
+                sys.stdout.flush()
+            # For each training example...
+            for i in range(len(Y)):
+                self.sgd_step(X[i], Y[i], learning_rate)
+                num_examples_seen += 1
+        return losses
+
+class Gru_BPTT:
+
+    def __init__(self, word_dim, hidden_dim = 30, bptt_truncate = 2 ):
+        #Assign instance variables
+        self.word_dim = word_dim
+        self.hidden_dim = hidden_dim
+        self.bptt_truncate = bptt_truncate
+        self.sigmoid = Sigmoid()
+        self.softmax = Softmax()
+        # Random asisgn weight
+        self.U = np.random.uniform( -np.sqrt(1./word_dim), np.sqrt(1./word_dim), (3, hidden_dim, word_dim) )
+        self.W = np.random.uniform( -np.sqrt(1./word_dim), np.sqrt(1./word_dim), (3, hidden_dim, hidden_dim) )
+        self.V = np.random.uniform( -np.sqrt(1./hidden_dim), np.sqrt(1./hidden_dim), (word_dim, hidden_dim) )
+        self.b = np.zeros( (3, hidden_dim) )
+        self.c = np.zeros( word_dim )
+
+        self.num_examples= 0
+        self.losses = []
+        self.time_eval_loss=5
+        self.learning_rate=0.005
+        self.time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        pass
+
+    def forward_propagation(self, x):
+        # The total number of time steps
+        T = len(x)
+        z = np.zeros((T + 1, self.hidden_dim))
+        r = np.zeros((T + 1, self.hidden_dim))
+        h = np.zeros((T + 1, self.hidden_dim))
+        s = np.zeros((T + 1, self.hidden_dim))
+        o= np.zeros((T, self.word_dim))
+
+        for t in range(T):
+            z[t]=self.sigmoid.forward(self.U[0,:,x[t]] + self.W[0].dot(s[t-1]) + self.b[2])
+            r[t]=self.sigmoid.forward(self.U[1,:,x[t]] + self.W[1].dot(s[t-1]) + self.b[1])
+            h[t]=np.tanh( self.U[2,:,x[t]] + self.W[2].dot(s[t-1]*r[t]) + self.b[0])
+            s[t]=(1-z[t])*h[t]+z[t]*s[t-1]
+            o[t]=self.softmax.forward( self.V.dot(h[t]) + self.c)
+        return [z, r, h, s, o]
+
+    def predict( self, x):
+        z, r, h, s, o= self.forward_propagation( x )
+        return np.argmax(o , axis = 1)
+
+    def calculate_total_loss( self, x, y):
+        L=0.0
+        # For each sentences
+        N = np.sum( ( len(y_i) for y_i in y) )
+        for i in range( len(y) ):
+            z, r, h, s, o = self.forward_propagation( x[i] )
+            correct_word_predictions = o[np.arange(len(y[i])), y[i]]
+            L += -1* np.sum(np.log(correct_word_predictions))
+        return L
+
+    def bptt(self, x, y):
+        T = len(y)
+        # Perform forward propagation
+        z, r, h, s, o = self.forward_propagation(x)
+
+        # Then we need to calculate the gradients
+        dLdU = np.zeros(self.U.shape)
+        dLdV = np.zeros(self.V.shape)
+        dLdW = np.zeros(self.W.shape)
+        dLdb = np.zeros(self.b.shape)
+        dLdc = np.zeros(self.c.shape)
+
+        delta_o = o
+        delta_o[ np.arange(len(y)), y ] -= 1.0
+
+        for t in np.arange(T)[::-1]:
+            dLdV += np.outer( delta_o[t], s[t].T )
+            delta_t = self.V.T.dot(delta_o[t]) * (1 - (s[t] ** 2))
+            dLdc += delta_o[t]
+            for bptt_step in np.arange(max(0, t-self.bptt_truncate), t+1)[::-1]:
+
+                dLdW[0] += np.outer(delta_t, s[bptt_step-1])
+                dLdU[0,:,x[bptt_step]] += delta_t
+                dLdb[0] += delta_t
+
+                dLdr = self.W[0].T.dot(delta_t) * (s[bptt_step-1])
+                dLdW[1] += np.outer( dLdr*r[bptt_step]*(1-r[bptt_step]), s[bptt_step-1] )
+                dLdU[1,:,x[bptt_step]] += dLdr*r[bptt_step]*(1-r[bptt_step])
+                dLdb[1] += dLdr * r[bptt_step] * (1-r[bptt_step])
+
+                if bptt_step>=1:
+                    dLdz = self.W[0].T.dot(delta_t) * r[bptt_step] * (s[bptt_step-2]-h[bptt_step])
+                    dLdW[2] += np.outer( dLdz * z[bptt_step] * (1-z[bptt_step]), s[bptt_step-1] )
+                    dLdU[2,:,x[bptt_step] ] += dLdz * z[bptt_step] * (1-z[bptt_step])
+                    dLdb[2] += dLdz * z[bptt_step] * (1-z[bptt_step])
+
+        return [ dLdU, dLdV, dLdW, dLdb, dLdc ]
+
+    def sgd_step(self, x, y, learning_rate):
+        dLdU, dLdV, dLdW, dLdb, dLdc = self.bptt(x, y)
+        self.U -= learning_rate * dLdU
+        self.V -= learning_rate * dLdV
+        self.W -= learning_rate * dLdW
+        self.b -= learning_rate * dLdb
+        self.c -= learning_rate * dLdc
+
+    def train(self,rep_tensor , learning_rate=0.003, nepoch=200, evaluate_loss_after=5):
+        losses = []
+        num_examples_seen = 0
+        num_steps=30
+        for epoch in range( nepoch ):
+            X = rep_tensor[:, epoch*num_steps:(epoch+1)*num_steps]
+            Y = rep_tensor[:, epoch*num_steps+1:(epoch+1)*num_steps+1]
+            if (epoch % evaluate_loss_after == 0):
+                loss = self.calculate_loss(X,Y)
+                losses.append((num_examples_seen, loss ))
+                time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                print("%s: Loss after num_examples_seen=%d epoch=%d: %f" % (time, num_examples_seen, epoch, loss))
+                sys.stdout.flush()
+            # For each training example...
+            for i in range(len(Y)):
+                self.sgd_step(X[i], Y[i], learning_rate)
+                num_examples_seen += 1
+        return losses
+
+
+
+
+
