@@ -32,7 +32,7 @@ import matplotlib.pyplot as plt
 if torch.cuda.is_available():
     print("Using GPU: " + str(0))
     device = torch.device("cuda")
-    torch.cuda.set_device(0)
+    # torch.cuda.set_device(0)
 else:
     print("WARNING: You are about to run on cpu, and this will likely run out \
       of memory. \n You can try setting batch_size=1 to reduce memory usage")
@@ -111,8 +111,10 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
     nn.init.uniform_(self.embedding.weight, a=-0.1, b=0.1)
     nn.init.uniform_(self.Wy_linear.weight, a=-0.1, b=0.1)
     nn.init.constant_(self.Wy_linear.bias, val=0)
-    nn.init.uniform_(self.Wx_linear[0].weight, a=-math.sqrt(1/self.hidden_size),
-            b=math.sqrt(1/self.hidden_size))
+    k = math.sqrt(1/self.hidden_size)
+    nn.init.uniform_(self.Wx_linear[0].weight, a=-k, b=k)
+    # nn.init.uniform_(self.Wx_linear[0].weight, a=-math.sqrt(1/self.hidden_size),
+    #         b=math.sqrt(1/self.hidden_size))
 
   def init_hidden(self):
     # TODO ========================
