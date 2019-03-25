@@ -30,7 +30,7 @@ def save_prediction(sequence, seq_length, file_name):
 
 def predict(id_2_word, seq_length=35, batch_size=20, load_GRU=True):
     if load_GRU:
-        model = GRU(300, 1500, 35, 20, 10000, 2, 0.35)#(emb_size=350, hidden_size=1500, seq_len=35 batch_size=20, vocab_size=10000, num_layers=2, dp_keep_prob=0.35)
+        model = GRU(200, 1500, 35, 20, 10000, 2, 0.35)#(emb_size=350, hidden_size=1500, seq_len=35 batch_size=20, vocab_size=10000, num_layers=2, dp_keep_prob=0.35)
         model.load_state_dict(torch.load("model\\best_GRU.pt"))
         filename = "predictions\\GRU_"+ str(seq_length) + ".txt"
     else:
@@ -48,5 +48,5 @@ def predict(id_2_word, seq_length=35, batch_size=20, load_GRU=True):
         for j in range(seq_length):
             sequence[i][j] = id_2_word[samples[j, i].item()]
     save_prediction(sequence, seq_length, filename)
-    
+
     return sequence

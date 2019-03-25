@@ -158,3 +158,4 @@ GRU_*/
 myscript
 cco/model/best_GRU.pt
 cco/model/best_RNN.pt
+cco/model/best_GRU2.pt

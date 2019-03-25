@@ -210,7 +210,7 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
     samples[0, :] = inputs
     activation = nn.Softmax(dim=1)
 
-    for time_idx in range(generated_seq_len):
+    for time_idx in range(generated_seq_len-1):
         #x = self.dropout(word_embeddings[time_idx, :, :])
         x = self.embedding(samples[time_idx, :])
         x = self.dropout(x)
@@ -222,7 +222,7 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
             hidden[layer_idx,:,:] = x       # (batch_size, hidden_size)
             x = self.dropout(x)
         y_t = activation(self.Wy_linear(x))
-        samples[time_idx, :] = torch.argmax(y_t, dim=1)
+        samples[time_idx+1, :] = torch.argmax(y_t, dim=1)
     return samples
 
 # Problem 2
@@ -369,8 +369,7 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
     samples[0, :] = inputs
     activation = nn.Softmax(dim=1)
 
-    for time_idx in range(generated_seq_len):
-        #x = self.dropout(word_embeddings[time_idx, :, :])
+    for time_idx in range(generated_seq_len-1):
         x = self.embedding(samples[time_idx, :])
         x = self.dropout(x)
 
@@ -381,7 +380,7 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
             x = self.dropout(x)
 
         y_t = activation(self.Wy_linear(x))
-        samples[time_idx, :] = torch.argmax(y_t, dim=1)
+        samples[time_idx+1, :] = torch.argmax(y_t, dim=1)
     return samples
 
 
