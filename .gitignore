@@ -152,6 +152,9 @@ fabric.properties
 
 # data folders
 output/
+GRU_*/
 
 # specific files
 myscript
+cco/model/best_GRU.pt
+cco/model/best_RNN.pt

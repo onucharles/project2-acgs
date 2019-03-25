@@ -77,10 +77,6 @@
 #      GRU.  Implementing this method is not considered part of problems 1/2 
 #      respectively, and will be graded as part of Problem 5.3
 
-# import comet for experiment logging
-from comet_ml import Experiment
-experiment = Experiment(api_key="w7QuiECYXbNiOozveTpjc9uPg", project_name="final-project", workspace="ift6135-project2")
-
 import argparse
 import time
 import collections
@@ -98,6 +94,7 @@ np = numpy
 # This is where your models are imported
 from models import RNN, GRU 
 from models import make_model as TRANSFORMER
+from generate_samples import predict
 
 
 ##############################################################################
@@ -106,26 +103,12 @@ from models import make_model as TRANSFORMER
 #
 ##############################################################################
 
-# python ptb-lm.py \
-# --save_dir=output \
-# --model=TRANSFORMER \
-# --optimizer=SGD \
-# --initial_lr=20 \
-# --batch_size=128 \
-# --seq_len=35 \
-# --hidden_size=512 \
-# --num_layers=6 \
-# --dp_keep_prob=.9 \
-# --save_best \
-# --emb_size=200 \
-# --num_epochs=40 \
-# --debug
-
 parser = argparse.ArgumentParser(description='PyTorch Penn Treebank Language Modeling')
 
 # Arguments you may need to set to run different experiments in 4.1 & 4.2.
 parser.add_argument('--data', type=str, default='data',
-                    help='location of the data corpus')
+                    help='location of the data corpus. We suggest you change the default\
+                    here, rather than passing as an argument, to avoid long file paths.')
 parser.add_argument('--model', type=str, default='GRU',
                     help='type of recurrent net (RNN, GRU, TRANSFORMER)')
 parser.add_argument('--optimizer', type=str, default='SGD_LR_SCHEDULE',
@@ -165,9 +148,8 @@ parser.add_argument('--evaluate', action='store_true',
                     ONCE for each model setting, and only after you've \
                     completed ALL hyperparameter tuning on the validation set.\
                     Note we are not requiring you to do this.")
-parser.add_argument('--gpu_no', type=int, default=0)
-parser.add_argument('--comet_tag', type=str, default='')
-parser.add_argument('--saved_model', type=str, default=None)
+parser.add_argument('--predict', action='store_true',
+                    help="use this to generate sentences from models")
 
 # DO NOT CHANGE THIS (setting the random seed makes experiments deterministic, 
 # which helps for reproducibility)
@@ -178,28 +160,21 @@ args = parser.parse_args()
 argsdict = args.__dict__
 argsdict['code_file'] = sys.argv[0]
 
-# first create an output dir
-if not os.path.exists(args.save_dir):
-    os.mkdir(args.save_dir)
-    print('Created directory: ', args.save_dir)
-
 # Use the model, optimizer, and the flags passed to the script to make the 
 # name for the experimental dir
 print("\n########## Setting Up Experiment ######################")
-flags = [flag.lstrip('--') for flag in sys.argv[1:]]
-# experiment_path = os.path.join(args.save_dir, '_'.join([argsdict['model'],
-#                                          argsdict['optimizer']]))
-#                                          #+ flags))
-experiment_path = os.path.join(args.save_dir, experiment.id)
-experiment.add_tag(args.comet_tag)
+flags = [flag.lstrip('--').replace('/', '').replace('\\', '') for flag in sys.argv[1:]]
+experiment_path = os.path.join(args.save_dir+'_'.join([argsdict['model'],
+                                        argsdict['optimizer']] 
+                                        + flags))
 
 # Increment a counter so that previous results with the same args will not
 # be overwritten. Comment out the next four lines if you only want to keep
 # the most recent results.
-# i = 0
-# while os.path.exists(experiment_path + "_" + str(i)):
-#     i += 1
-# experiment_path = experiment_path + "_" + str(i)
+i = 0
+while os.path.exists(experiment_path + "_" + str(i)):
+    i += 1
+experiment_path = experiment_path + "_" + str(i)
 
 # Creates an experimental directory and dumps all the args to a text file
 os.mkdir(experiment_path)
@@ -214,25 +189,25 @@ torch.manual_seed(args.seed)
 
 # Use the GPU if you have one
 if torch.cuda.is_available():
-    print("Using GPU: " + str(args.gpu_no))
-    device = torch.device("cuda")
-    torch.cuda.set_device(args.gpu_no)
+    print("Using the GPU")
+    device = torch.device("cuda") 
 else:
     print("WARNING: You are about to run on cpu, and this will likely run out \
-      of memory. \n You can try setting batch_size=1 to reduce memory usage")
+        of memory. \n You can try setting batch_size=1 to reduce memory usage")
     device = torch.device("cpu")
 
 
 ###############################################################################
 #
-# DATA LOADING & PROCESSING
+# 
+#LOADING & PROCESSING
 #
 ###############################################################################
 
 # HELPER FUNCTIONS
 def _read_words(filename):
     with open(filename, "r") as f:
-      return f.read().replace("\n", "<eos>").split()
+        return f.read().replace("\n", "<eos>").split()
 
 def _build_vocab(filename):
     data = _read_words(filename)
@@ -312,6 +287,14 @@ train_data, valid_data, test_data, word_to_id, id_2_word = raw_data
 vocab_size = len(word_to_id)
 print('  vocabulary size: {}'.format(vocab_size))
 
+if args.predict:
+    sentences_GRU_35 = predict(id_2_word=id_2_word, load_GRU=True)
+    sentences_RNN_35 = predict(id_2_word=id_2_word, load_GRU=False)
+
+    sentences_GRU_70 = predict(id_2_word=id_2_word, seq_length=70, load_GRU=True)
+    sentences_RNN_70 = predict(id_2_word=id_2_word, seq_length=70, load_GRU=False)
+    sys.exit(0)
+
 
 ###############################################################################
 # 
@@ -349,12 +332,7 @@ elif args.model == 'TRANSFORMER':
     model.seq_len=args.seq_len
     model.vocab_size=vocab_size
 else:
-  print("Model type not recognized.")
-
-# load saved model if any.
-if not args.saved_model is None:
-    print('Loading saved model from {}...'.format(args.saved_model))
-    model.load_state_dict(torch.load(args.saved_model))
+    print("Model type not recognized.")
 
 model = model.to(device)
 
@@ -436,7 +414,7 @@ def run_epoch(model, data, is_train=False, lr=1.0):
         losses.append(costs)
         iters += model.seq_len
         if args.debug:
-            print(step, loss.item())
+            print(step, loss)
         if is_train:  # Only update parameters if training 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
@@ -448,7 +426,7 @@ def run_epoch(model, data, is_train=False, lr=1.0):
                         p.data.add_(-lr, p.grad.data)
             if step % (epoch_size // 10) == 10:
                 print('step: '+ str(step) + '\t' \
-                    + 'loss: '+ str(costs) + '\t' \
+                    + "loss (sum over all examples' seen this epoch):" + str(costs) + '\t' \
                     + 'speed (wps):' + str(iters * model.batch_size / (time.time() - start_time)))
     return np.exp(costs / iters), losses
 
@@ -474,9 +452,6 @@ if args.debug:
 else:
     num_epochs = args.num_epochs
 
-# log hyperparameters
-experiment.log_parameters(vars(args))
-
 # MAIN LOOP
 for epoch in range(num_epochs):
     t0 = time.time()
@@ -484,28 +459,20 @@ for epoch in range(num_epochs):
     if args.optimizer == 'SGD_LR_SCHEDULE':
         lr_decay = lr_decay_base ** max(epoch - m_flat_lr, 0)
         lr = lr * lr_decay # decay lr if it is time
-    experiment.log_current_epoch(epoch)
-    experiment.log_metric("learning_rate", lr, step=epoch)
 
     # RUN MODEL ON TRAINING DATA
-    # with torch.autograd.set_detect_anomaly(True):
     train_ppl, train_loss = run_epoch(model, train_data, True, lr)
-    # experiment.log_metric("train_loss", np.mean(train_loss), step=epoch)
-    experiment.log_metric("train_perplexity", train_ppl, step=epoch)
 
     # RUN MODEL ON VALIDATION DATA
     val_ppl, val_loss = run_epoch(model, valid_data)
-    # experiment.log_metric("val_loss", np.mean(val_loss), step=epoch)
-    experiment.log_metric("val_perplexity", val_ppl, step=epoch)
+
 
     # SAVE MODEL IF IT'S THE BEST SO FAR
     if val_ppl < best_val_so_far:
         best_val_so_far = val_ppl
         if args.save_best:
             print("Saving model parameters to best_params.pt")
-            best_model_path = os.path.join(args.save_dir, 'best_params.pt')
-            torch.save(model.state_dict(), best_model_path)
-            experiment.log_asset(best_model_path, overwrite=True)
+            torch.save(model.state_dict(), os.path.join(args.save_dir, 'best_params.pt'))
         # NOTE ==============================================
         # You will need to load these parameters into the same model
         # for a couple Problems: so that you can compute the gradient 
@@ -536,8 +503,7 @@ print('\nDONE\n\nSaving learning curves to '+lc_path)
 np.save(lc_path, {'train_ppls':train_ppls, 
                   'val_ppls':val_ppls, 
                   'train_losses':train_losses,
-                  'val_losses':val_losses,
-                  'times': times})
+                  'val_losses':val_losses})
 # NOTE ==============================================
 # To load these, run 
 # >>> x = np.load(lc_path)[()]
