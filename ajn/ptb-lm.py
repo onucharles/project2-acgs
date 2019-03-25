@@ -425,13 +425,15 @@ def run_epoch(model, data, is_train=False, lr=1.0):
                     model.minibatch_grad_rnn.losses.append((model.minibatch_grad_rnn.num_examples, loss_mini_batch))
                     print("%s: Loss after num_examples_seen=%d epoch=%d: %f" % (model.minibatch_grad_rnn.time,
                         model.minibatch_grad_rnn.num_examples, epoch, loss_mini_batch))
+                    model.minibatch_grad_rnn.save_gradients(model.minibatch_grad_rnn.num_examples)
                     # Adjust the learning rate if loss increases
                     if len(model.minibatch_grad_rnn.losses) > 1 and model.minibatch_grad_rnn.losses[-1][1] > model.minibatch_grad_rnn.losses[-2][1]:
                         model.minibatch_grad_rnn.learning_rate = model.minibatch_grad_rnn.learning_rate * 0.5
                         print("Setting learning rate to %f" % model.minibatch_grad_rnn.learning_rate)
                     sys.stdout.flush()
                 for i in range(len(y)):
-                    model.minibatch_grad_rnn.sgd_step(x[i], x[i], model.minibatch_grad_rnn.learning_rate)
+                    sgd_vector = model.minibatch_grad_rnn.sgd_step(x[i], x[i], model.minibatch_grad_rnn.learning_rate)
+                    model.minibatch_grad_rnn.init_grad(sgd_vector)
                     model.minibatch_grad_rnn.num_examples += 1
 
     return np.exp(costs / iters), losses

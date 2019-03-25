@@ -10,6 +10,8 @@ from datetime import datetime
 import sys
 import matplotlib.pyplot as plt
 
+from numpy import linalg as LA
+
 # NOTE ==============================================
 #
 # Fill in code for every method which has a TODO
@@ -758,6 +760,9 @@ class RNN_BPTT:
         self.time_eval_loss=5
         self.learning_rate=0.005
         self.time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self.grad_arr = []
+        self.grad_arr_norm = []
+        self.initialized = False
 
     def forward_propagation(self, x):
         # The total number of time steps
@@ -829,11 +834,30 @@ class RNN_BPTT:
         self.U -= learning_rate * dU
         self.V -= learning_rate * dV
         self.W -= learning_rate * dW
+        return [dU, dW, dV]
 
-    def train(self, rep_tensor, learning_rate=0.005, nepoch=100, evaluate_loss_after=5):
+    def save_gradients(self, mini_batch_size):
+        if self.initialized:
+            self.tdLdU = LA.norm([x / mini_batch_size for x in self.tdLdU])
+            self.tdLdV = LA.norm([x / mini_batch_size for x in self.tdLdV])
+            self.tdLdW = LA.norm([x / mini_batch_size for x in self.tdLdW])
+            self.grad_arr.append([self.tdLdU, self.tdLdW, self.tdLdV])
+            print("Average gradient dL/dU,dL/dW,dL/dV: ", [self.tdLdU, self.tdLdW, self.tdLdV])
+
+    def init_grad(self, sgd_vector):
+        if self.initialized == False:
+            self.tdLdU = np.zeros_like(sgd_vector[0])
+            self.tdLdW = np.zeros_like(sgd_vector[1])
+            self.tdLdV = np.zeros_like(sgd_vector[2])
+            self.initialized = True
+        self.tdLdU += sgd_vector[0]
+        self.tdLdW += sgd_vector[1]
+        self.tdLdV += sgd_vector[2]
+
+    def train(self, rep_tensor, learning_rate=0.005, nepoch=100, evaluate_loss_after=5, num_steps=20):
         num_examples_seen = 0
-        num_steps = 30
         losses = []
+        initialized = False
         for epoch in range(nepoch):
             X = rep_tensor[:, epoch * num_steps:(epoch + 1) * num_steps]
             Y = rep_tensor[:, epoch * num_steps + 1:(epoch + 1) * num_steps + 1]
@@ -842,6 +866,12 @@ class RNN_BPTT:
                 losses.append((num_examples_seen, loss))
                 time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 print("%s: Loss after num_examples_seen=%d epoch=%d: %f" % (time, num_examples_seen, epoch, loss))
+                if (self.initialized):
+                    tdLdU = [x / num_examples_seen for x in tdLdU]
+                    tdLdV = [x / num_examples_seen for x in tdLdV]
+                    tdLdW = [x / num_examples_seen for x in tdLdW]
+                    self.grad_arr.append([tdLdU, tdLdW, tdLdV])
+                    print("Average gradient dL/dU,dL/dW,dL/dV: ", [tdLdU, tdLdW, tdLdV])
                 # Adjust the learning rate if loss increases
                 if len(losses) > 1 and losses[-1][1] > losses[-2][1]:
                     learning_rate = learning_rate * 0.5
@@ -849,8 +879,16 @@ class RNN_BPTT:
                 sys.stdout.flush()
             # For each training example...
             for i in range(len(Y)):
-                self.sgd_step(X[i], Y[i], learning_rate)
+                dU, dW, dV = self.sgd_step(X[i], Y[i], learning_rate)
                 num_examples_seen += 1
+                if initialized == False:
+                    tdLdU = np.zeros_like(dU)
+                    tdLdV = np.zeros_like(dV)
+                    tdLdW = np.zeros_like(dW)
+                    initialized = True
+                tdLdU += dU
+                tdLdV += dV
+                tdLdW += dW
         return losses
 
 class Gru_BPTT:
@@ -874,6 +912,9 @@ class Gru_BPTT:
         self.time_eval_loss=5
         self.learning_rate=0.005
         self.time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self.grad_arr = []
+        self.grad_arr_norm = []
+        self.initialized = False
         pass
 
     def forward_propagation(self, x):
@@ -952,24 +993,78 @@ class Gru_BPTT:
         self.W -= learning_rate * dLdW
         self.b -= learning_rate * dLdb
         self.c -= learning_rate * dLdc
+        return dLdU, dLdV, dLdW, dLdb, dLdc
 
-    def train(self,rep_tensor , learning_rate=0.003, nepoch=200, evaluate_loss_after=5):
+    def init_grad(self, sgd_vector):
+        if self.initialized == False:
+            self.tdLdU = np.zeros_like(sgd_vector[0])
+            self.tdLdV = np.zeros_like(sgd_vector[1])
+            self.tdLdW = np.zeros_like(sgd_vector[2])
+            self.tdLdb = np.zeros_like(sgd_vector[3])
+            self.tdLdc = np.zeros_like(sgd_vector[4])
+            self.initialized = True
+        self.tdLdU += sgd_vector[0]
+        self.tdLdV += sgd_vector[1]
+        self.tdLdW += sgd_vector[2]
+        self.tdLdb += sgd_vector[3]
+        self.tdLdc += sgd_vector[4]
+
+    def save_gradients(self, mini_batch_size):
+        if self.initialized:
+            self.tdLdU = LA.norm([x / mini_batch_size for x in self.tdLdU])
+            self.tdLdV = LA.norm([x / mini_batch_size for x in self.tdLdV])
+            self.tdLdW = LA.norm([x / mini_batch_size for x in self.tdLdW])
+            self.tdLdb = LA.norm([x / mini_batch_size for x in self.tdLdb])
+            self.tdLdc = LA.norm([x / mini_batch_size for x in self.tdLdc])
+            self.grad_arr.append([self.tdLdU, self.tdLdV, self.tdLdW, self.tdLdb, self.tdLdc])
+            print("Average gradient dL/dU,dL/dV,dL/dW,dL/db,dL/dc: ", [self.tdLdU, self.tdLdV, self.tdLdW, self.tdLdb, self.tdLdc])
+
+    def train(self,rep_tensor , learning_rate=0.003, nepoch=200, evaluate_loss_after=5, num_steps=20):
         losses = []
+        initialized = False
         num_examples_seen = 0
-        num_steps=30
-        for epoch in range( nepoch ):
-            X = rep_tensor[:, epoch*num_steps:(epoch+1)*num_steps]
-            Y = rep_tensor[:, epoch*num_steps+1:(epoch+1)*num_steps+1]
-            if (epoch % evaluate_loss_after == 0):
-                loss = self.calculate_loss(X,Y)
-                losses.append((num_examples_seen, loss ))
+        test = 0
+        grad_step = 0
+        for epoch in range(nepoch):
+            X = rep_tensor[:, epoch * num_steps:(epoch + 1) * num_steps]
+            Y = rep_tensor[:, epoch * num_steps + 1:(epoch + 1) * num_steps + 1]
+            if epoch % evaluate_loss_after == 0:
+                loss = self.calculate_loss(X, Y)
+                losses.append((num_examples_seen, loss))
                 time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 print("%s: Loss after num_examples_seen=%d epoch=%d: %f" % (time, num_examples_seen, epoch, loss))
+                if (initialized):
+                    print("test", test)
+                    test = 0
+                    tdLdU = [x / num_examples_seen for x in tdLdU]
+                    tdLdV = [x / num_examples_seen for x in tdLdV]
+                    tdLdW = [x / num_examples_seen for x in tdLdW]
+                    tdLdb = [x / num_examples_seen for x in tdLdb]
+                    tdLdc = [x / num_examples_seen for x in tdLdc]
+                    #grad_step = LA.norm([tdLdU, tdLdV, tdLdW, tdLdb, tdLdc])
+                    #self.grad_arr_norm.append(grad_step)
+                    self.grad_arr.append([tdLdU, tdLdV, tdLdW, tdLdb, tdLdc])
+                    print("Average gradient normalized dL/dU, dL/dV, dL/dW, dL/db, dL/dc:",
+                          [tdLdU, tdLdV, tdLdW, tdLdb, tdLdc])
+                    #print("Gradient normalized:", grad_step)
                 sys.stdout.flush()
             # For each training example...
             for i in range(len(Y)):
-                self.sgd_step(X[i], Y[i], learning_rate)
+                dLdU, dLdV, dLdW, dLdb, dLdc = self.sgd_step(X[i], Y[i], learning_rate)
+                if initialized == False:
+                    tdLdU = np.zeros_like(dLdU)
+                    tdLdV = np.zeros_like(dLdV)
+                    tdLdW = np.zeros_like(dLdW)
+                    tdLdb = np.zeros_like(dLdb)
+                    tdLdc = np.zeros_like(dLdc)
+                    initialized = True
+                tdLdU += dLdU
+                tdLdV += dLdV
+                tdLdW += dLdW
+                tdLdb += dLdb
+                tdLdc += dLdc
                 num_examples_seen += 1
+                test += 1
         return losses
 
 
