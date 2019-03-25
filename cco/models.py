@@ -180,6 +180,7 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
 
     return logits.view(self.seq_len, self.batch_size, self.vocab_size), hidden
 
+  def generate(self, inputs, hidden, generated_seq_len, batch_size):
     # TODO ========================
     # Compute the forward pass, as in the self.forward method (above).
     # You'll probably want to copy substantial portions of that code here.
@@ -207,6 +208,8 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
     torch.no_grad()
     samples = torch.zeros([generated_seq_len, batch_size], dtype=torch.long)
     samples[0, :] = inputs
+    activation = nn.Softmax(dim=1)
+
     for time_idx in range(generated_seq_len):
         #x = self.dropout(word_embeddings[time_idx, :, :])
         x = self.embedding(samples[time_idx, :])
@@ -214,6 +217,7 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
 
         for layer_idx in range(self.num_layers):
             cur_hidden = hidden[layer_idx, :, :].clone()
+            x = self.tanh(self.Wx_linear[layer_idx](x)
                     + self.Wh_linear[layer_idx](cur_hidden))
             hidden[layer_idx,:,:] = x       # (batch_size, hidden_size)
             x = self.dropout(x)
