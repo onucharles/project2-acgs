@@ -32,10 +32,12 @@ def predict(id_2_word, seq_length=35, batch_size=20, load_GRU=True):
     if load_GRU:
         model = GRU(200, 1500, 35, 20, 10000, 2, 0.35)#(emb_size=350, hidden_size=1500, seq_len=35 batch_size=20, vocab_size=10000, num_layers=2, dp_keep_prob=0.35)
         model.load_state_dict(torch.load("model\\best_GRU.pt"))
+        model.eval()
         filename = "predictions\\GRU_"+ str(seq_length) + ".txt"
     else:
         model = RNN(200, 1500, 35, 20, 10000, 2, 0.35)
         model.load_state_dict(torch.load("model\\best_RNN.pt"))
+        model.eval()
         filename = "predictions\\RNN_"+ str(seq_length) + ".txt"
     hidden = model.init_hidden()
 
