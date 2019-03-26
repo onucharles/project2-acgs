@@ -180,7 +180,7 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
 
     return logits.view(self.seq_len, self.batch_size, self.vocab_size), hidden
 
-  def generate(self, input, hidden, generated_seq_len):
+  def generate(self, inputs, hidden, generated_seq_len, batch_size):
     # TODO ========================
     # Compute the forward pass, as in the self.forward method (above).
     # You'll probably want to copy substantial portions of that code here.
@@ -205,7 +205,24 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
         - Sampled sequences of tokens
                     shape: (generated_seq_len, batch_size)
     """
-   
+    torch.no_grad()
+    samples = torch.zeros([generated_seq_len, batch_size], dtype=torch.long)
+    samples[0, :] = inputs
+    activation = nn.Softmax(dim=1)
+
+    for time_idx in range(generated_seq_len-1):
+        #x = self.dropout(word_embeddings[time_idx, :, :])
+        x = self.embedding(samples[time_idx, :])
+        x = self.dropout(x)
+
+        for layer_idx in range(self.num_layers):
+            cur_hidden = hidden[layer_idx, :, :].clone()
+            x = self.tanh(self.Wx_linear[layer_idx](x)
+                    + self.Wh_linear[layer_idx](cur_hidden))
+            hidden[layer_idx,:,:] = x       # (batch_size, hidden_size)
+            x = self.dropout(x)
+        y_t = activation(self.Wy_linear(x))
+        samples[time_idx+1, :] = torch.argmax(y_t, dim=1)
     return samples
 
 # Problem 2
@@ -345,8 +362,25 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
         logits[time_idx, :, :] = y_t
     return logits.view(self.seq_len, self.batch_size, self.vocab_size), hidden
 
-  def generate(self, input, hidden, generated_seq_len):
+  def generate(self, inputs, hidden, generated_seq_len, batch_size):
     # TODO ========================
+    torch.no_grad()
+    samples = torch.zeros([generated_seq_len, batch_size], dtype=torch.long)
+    samples[0, :] = inputs
+    activation = nn.Softmax(dim=1)
+
+    for time_idx in range(generated_seq_len-1):
+        x = self.embedding(samples[time_idx, :])
+        x = self.dropout(x)
+
+        for layer_idx in range(self.num_layers):
+            cur_hidden = hidden[layer_idx, :, :].clone()
+            x = self.gru_cells[layer_idx](x, cur_hidden)
+            hidden[layer_idx, :, :] = x  # (batch_size, hidden_size)
+            x = self.dropout(x)
+
+        y_t = activation(self.Wy_linear(x))
+        samples[time_idx+1, :] = torch.argmax(y_t, dim=1)
     return samples
 
 
