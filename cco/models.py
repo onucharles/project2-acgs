@@ -208,21 +208,28 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
     torch.no_grad()
     samples = torch.zeros([generated_seq_len, batch_size], dtype=torch.long)
     samples[0, :] = inputs
-    activation = nn.Softmax(dim=1)
+    #relu = nn.ReLU()
+    #activation = nn.Softmax(dim=1)
 
     for time_idx in range(generated_seq_len-1):
-        #x = self.dropout(word_embeddings[time_idx, :, :])
         x = self.embedding(samples[time_idx, :])
-        x = self.dropout(x)
 
         for layer_idx in range(self.num_layers):
             cur_hidden = hidden[layer_idx, :, :].clone()
             x = self.tanh(self.Wx_linear[layer_idx](x)
                     + self.Wh_linear[layer_idx](cur_hidden))
             hidden[layer_idx,:,:] = x       # (batch_size, hidden_size)
-            x = self.dropout(x)
-        y_t = activation(self.Wy_linear(x))
-        samples[time_idx+1, :] = torch.argmax(y_t, dim=1)
+        
+        y_t = self.Wy_linear(x)
+
+        #samples[time_idx+1, :] = torch.multinomial(relu(y_t), 1)[:, 0].data      
+        
+        distribution = torch.distributions.categorical.Categorical(logits=y_t)
+        samples[time_idx+1, :] = distribution.sample()
+
+        # y_t = activation(y_t)
+        # samples[time_idx+1, :] = torch.argmax(y_t, dim=1)
+
     return samples
 
 # Problem 2
@@ -371,16 +378,21 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
 
     for time_idx in range(generated_seq_len-1):
         x = self.embedding(samples[time_idx, :])
-        x = self.dropout(x)
 
         for layer_idx in range(self.num_layers):
             cur_hidden = hidden[layer_idx, :, :].clone()
             x = self.gru_cells[layer_idx](x, cur_hidden)
             hidden[layer_idx, :, :] = x  # (batch_size, hidden_size)
-            x = self.dropout(x)
 
-        y_t = activation(self.Wy_linear(x))
-        samples[time_idx+1, :] = torch.argmax(y_t, dim=1)
+        y_t = self.Wy_linear(x)
+        
+        samples[time_idx+1, :] = torch.multinomial(activation(y_t), 1)[:, 0].data
+
+        #distribution = torch.distributions.categorical.Categorical(logits=y_t)
+        #samples[time_idx+1, :] = distribution.sample() 
+        
+        # y_t = activation(y_t)
+        # samples[time_idx+1, :] = torch.argmax(y_t, dim=1)
     return samples
 
 
