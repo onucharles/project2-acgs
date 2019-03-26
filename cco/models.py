@@ -208,8 +208,7 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
     torch.no_grad()
     samples = torch.zeros([generated_seq_len, batch_size], dtype=torch.long)
     samples[0, :] = inputs
-    #relu = nn.ReLU()
-    #activation = nn.Softmax(dim=1)
+    activation = nn.Softmax(dim=1)
 
     for time_idx in range(generated_seq_len-1):
         x = self.embedding(samples[time_idx, :])
@@ -222,10 +221,10 @@ class RNN(nn.Module): # Implement a stacked vanilla RNN with Tanh nonlinearities
         
         y_t = self.Wy_linear(x)
 
-        #samples[time_idx+1, :] = torch.multinomial(relu(y_t), 1)[:, 0].data      
+        samples[time_idx+1, :] = torch.multinomial(activation(y_t), 1)[:, 0].data      
         
-        distribution = torch.distributions.categorical.Categorical(logits=y_t)
-        samples[time_idx+1, :] = distribution.sample()
+        # distribution = torch.distributions.categorical.Categorical(logits=y_t)
+        # samples[time_idx+1, :] = distribution.sample()
 
         # y_t = activation(y_t)
         # samples[time_idx+1, :] = torch.argmax(y_t, dim=1)
@@ -386,11 +385,11 @@ class GRU(nn.Module): # Implement a stacked GRU RNN
 
         y_t = self.Wy_linear(x)
         
-        samples[time_idx+1, :] = torch.multinomial(activation(y_t), 1)[:, 0].data
-
-        #distribution = torch.distributions.categorical.Categorical(logits=y_t)
-        #samples[time_idx+1, :] = distribution.sample() 
+        samples[time_idx+1, :] = torch.multinomial(activation(y_t), 1)[:, 0].data      
         
+        # distribution = torch.distributions.categorical.Categorical(logits=y_t)
+        # samples[time_idx+1, :] = distribution.sample()
+
         # y_t = activation(y_t)
         # samples[time_idx+1, :] = torch.argmax(y_t, dim=1)
     return samples
